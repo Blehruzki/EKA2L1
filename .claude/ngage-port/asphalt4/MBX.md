@@ -14511,3 +14511,63 @@ c. State the bench did not enter: the pace at 2 or 8 (bench: 1 and 4); two big m
   1,015,124 bytes. The owner bakes it. What the round reads: the tyres (spinning?), the reflection (its look; its cost:
   frec3.py timers "the reflection", TIM2 [40..48], and the pace it settled at), New York's 2D phase (FRC4), Paris's
   hitches (m1_rebakes 0 expected).
+
+### Phone round r91a, LA (the owner, Mini Cooper: "Reflections are there, but they update every half a second instead of sliding smoothly across the paint and windows. It is very distracting. Wheels are spinning. But only for players car. What about racing cars?")
+- Upload: 8 ring captures (up91la/, the owner's "forgot to send telemetry" follow-up). FRC4 on 1,883 renders.
+- **Against r90b's LA**: under 60 ms 75% (72%), 60-75 ms 20% (27%), **75 ms or more 4.4% (0.2%; 82 renders)**; renders
+  under 60 ms 47.1 ms (52.9); unboosted 49.7 ms (53.1), **the 2D phase unboosted 2.39 ms (3.6)** -- A4_PAINTFWD's gain
+  held on the phone, larger than the model's; boosted 17% of renders, 65.3 ms, the 2D 11.1 (12.0).
+- **The reflection's cost (frec3.py timers, TIM2 [40..48])**: 504 refreshes, **2.32 ms each making its texels and 18.23
+  uploading them** (15,426 texels in 7 rectangles: the Mini's paint; 1.96-2.57 / 17.76-18.67 by window); the pace settled
+  at every 8th composite (TIM2 [48] 8 | 8 << 16). Rule 4 a.(1), the guess, answered: the MBX driver charges ~2.3 ms a
+  glTexSubImage2D call plus ~70 us a KB -- ~10x what the model charged -- so the pace stepped the reflection every
+  ~0.4 s at the phone's ~20 fps (the owner's "every half a second"), and each step is one of the 75 ms renders: "the
+  rest" averages 37.0 ms in renders of 70 ms or more against 14.2 in those under 60.
+- **Wheels**: the opponents' are still as the stock game has them -- +1B084 runs for every car at +DCE2, and only a car
+  with data at [car+1A8] animates (+1B084's first test). cac (C92 + A4_CARANIMCEN, LA, the census in +1B084): 1,993
+  calls in 230 renders, 263 of them with [car+1A8] set -- one car of the ~8 called each render, the player's; the
+  others return at that test. Not ours to add: stock behaviour (their models carry no wheel animation to play).
+- Rule 3: r91a is the best build so far for typical renders (LA unboosted 49.7 ms), and the worst for spikes, all of them
+  the reflection's uploads. Next: the reflection with no texture changed during the race.
+
+### The reflection on the GPU, no texture changed during a race (A4_M1SKY, replaces A4_M1LIVE)
+The phone priced every texel upload at ~2.3 ms a call: whatever moves with the picture cannot go through a texture
+each render. What moves is only where each reflective texel looks: the paint's map gives each one a screen point
+(M = y * 320 + x, rows 0-66), and stock adds a quarter of the pixel there. A4_M1SKY moves that lookup onto the GPU:
+- **The paint** (a big mode-1 texture on the screen's table, drawn by the player's GPU car) is made once as RGBA8888:
+  its T, alpha 0 where T is 0 (the colour key), **0x80 where it reflects** (M != 0), 0xFF elsewhere. GL_REPLACE writes
+  that alpha into the frame (0x80 is still "drawn" to the composite).
+- **The half sky**: the GPU's own backdrop (A4_GPUSKY's panorama) made once as a texture at twice its quarter, channel
+  by channel (m1s_half, the stock arithmetic), with 64 rows of the top fill's colour above it and the last row below
+  (wrap at the panorama's power-of-two width, clamp in height).
+- **The second pass**: right after the car, its reflecting faces again over the half sky, at texture coordinates that
+  are each corner's screen point, mapped into the half sky each frame from sky_layout's runs (one offset: the
+  texture matrix); GL_EQUAL depth, blending (1 - dst alpha, 1): a reflecting texel gets 0.498 of twice the quarter,
+  any other none, and every car pixel ends with alpha 0xFF as before. Both car draws (gcar_flush, cvr_redraw) do it.
+- **The points**: a face's corner points are the least-squares plane of the map's points over the face's texels
+  (m1s_scan: those inside the face, else those in its box; the mean where they lie on one line), made once at the
+  car's first draw with the list of faces that reflect (glDrawElements). Only the player's car registers (the mesh
+  +1B084 animates, with a big mode-1 paint): one slot, which an opponent's mesh baked later would otherwise take.
+- What it does not hold: what the 3D draws over the screen's top rows (stock reads the frame as drawn; this reads the
+  backdrop only), and the map's own curvature inside a face.
+- TIM2 [40] passes, [41] passes on an earlier frame's mapping, [42] point tables, [43] faces drawn again | fitted flat
+  << 16, [44] half skies made, [45] the mapping, [46] the image, [47] paints made, [49] ticks making the half skies |
+  the point tables << 16 (frec3.py timers: "the reflection on the GPU"). Bench only: -DA4_M1SKYCEN (TIM2 [48],
+  [50..56]: the faces against the map, the half sky's remakes and why, registrations).
+
+Runs (bench, C93 = C91 + A4_CARANIM + A4_M1SKY + A4_PAINTFWD + A4_SNOWFAST):
+- msla / msla2 (the first version: every mode-1 face on the paint drawn again, points searched from each corner toward
+  the face's centre): the reflection follows the picture every frame (posts 1100-1111 cropped: the rear window changes
+  each post) and looks as r91a's exact one (m1la, the same route on r91a, cropped side by side). Corners a scene +3,163
+  (2 passes of ~1,580): every one of the paint's 564 faces drawn again.
+- mscen (+ A4_M1SKYCEN, LA, the Veyron): **50 of the paint's 564 faces have a reflecting texel inside**, 1,586 corners
+  found no map point within 7/8 of the way to the centre; the corners' interpolation off the map by **8.35 px a
+  texel** (52,660 px over 6,308 reflecting texels). So: the pass draws only the faces with a reflecting texel in their
+  box (56), and the points became the least-squares plane -- mscen again: **2.79 px a texel** (17,610 / 6,308), 56
+  faces drawn again (10 fitted flat, 6 from their box's texels), corners a scene +157 against r91a (msla3).
+- hm_r91a / hm_ms (the modelled N95, hcm.sh, Instant Play 240 s, marks at 80 and 160 s): scenes 1,067 / **1,174**; the
+  table draw 14.53 / 11.48 ms a scene (mark0-mark1 14.22 / 10.46); the car flush 1.45 / 1.45 (1.04 / 1.10); GL calls
+  "other" +12 a pass. The reflection on the GPU: 2.00 passes a scene, 30 of 2,192 on an earlier frame's mapping.
+- **The half sky was made 3 times in hm_ms** (~256 KB: 13 strips at ~2.3 ms + ~70 us a KB, ~48 ms on the phone each).
+  hm_cen (+ the census of why): the top fill's colour flickers 0x1061 / 0x1060 -- a blue bit the half drops -- and each
+  flicker made the texture again. Keyed by the half colour now.

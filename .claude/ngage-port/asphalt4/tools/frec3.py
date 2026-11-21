@@ -157,7 +157,14 @@ if mode == 'timers':
                   'the batch flushed inside the shadow\'s draws %.2f ms a scene (%.2f flushes a scene)'
                   % ((b[12] - a[12]) / max(dp, 1), dp, dp / dn, (b[14] - a[14]) / max(dv, 1), (b[18] - a[18]) / max(dz, 1),
                      (b[16] - a[16]) / dn, (b[17] - a[17]) / dn))
-        if b[64] == 0x324D4954 and b[64 + 45]:       # round 88 (A4_M1LIVE): the paint's reflection after each composite
+        if b[64] == 0x324D4954 and b[64 + 46] >> 16 and not b[64 + 48]:   # round 88 (A4_M1SKY, r91b): the GPU's pass
+            dr = b[104] - a[104]                    # TIM2 [40..47]; [48] is A4_M1LIVE's pace, never 0 there
+            print('    the reflection on the GPU: %d second passes (%.2f a scene), %d with an earlier frame\'s mapping; '
+                  '%d point tables made (%d ms in all), faces drawn again %d (%d fitted flat); half skies made %d '
+                  '(%d ms in all; image %dx%d, mapping %d,%d); paints made %d'
+                  % (dr, dr / dn, b[105] - a[105], b[106], b[113] >> 16, b[107] & 0xFFFF, b[107] >> 16, b[108],
+                     b[113] & 0xFFFF, b[110] & 0xFFFF, b[110] >> 16, b[109] & 0xFFFF, b[109] >> 16, b[111]))
+        elif b[64] == 0x324D4954 and b[64 + 45]:     # round 88 (A4_M1LIVE): the paint's reflection after each composite
             dr = b[104] - a[104]                    # TIM2 [40..47]
             if dr > 0:
                 print('    the reflection: %d refreshes (%.2f a scene), %.2f ms each making its texels, %.2f uploading them; '

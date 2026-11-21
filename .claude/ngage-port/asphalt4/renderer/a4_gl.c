@@ -4616,6 +4616,85 @@ static void m1l_refresh(volatile struct glr *s)
     }
 }
 #endif
+#ifdef A4_M1SKY
+/* Round 88, phone round r91a (the owner, LA: the reflections "update every half a second instead of sliding smoothly
+ * across the paint and windows"; A4_M1LIVE's telemetry: 2.3 ms making a refresh and 18.2-18.7 ms uploading it -- the
+ * MBX driver's ~2.3 ms a glTexSubImage2D call, ~70 us a KB -- so it ran every 8th render). The paint's reflection on
+ * the GPU, no texture changed during the race:
+ * - the paint (a big mode-1 texture on the screen's table, drawn by a GPU car) is made once as RGBA8888 -- its T,
+ *   alpha 0 where T is 0 (the colour key, as before), 0x80 where it reflects (M != 0), 0xFF elsewhere -- and drawn as
+ *   ever (GL_REPLACE writes that alpha into the frame; 0x80 is still "drawn" to the composite);
+ * - right after the car, its mode-1 faces again over the GPU's own sky texture made at half its value (twice the
+ *   span's quarter, channel by channel as its arithmetic), at texture coordinates that are each corner's point on
+ *   the screen (from M near the corner, the game's own map), with GL_EQUAL depth and blending (1 - dst alpha, 1): a
+ *   reflective texel gets 0.498 of twice the quarter, any other none, and every one of the car's pixels ends with
+ *   alpha 0xFF again, as before. Only the faces with a reflecting texel in their box are drawn again (a list made
+ *   with the points: on LA's Veyron 50 of the paint's 564), and each one's corner points are the least-squares
+ *   plane of the map's points over its texels -- the per-texel map drawn as the nearest plane across each face;
+ * - the screen-to-sky mapping each frame from the GPU's backdrop (sky_layout's runs). So the reflection follows the
+ *   picture every frame, but holds the backdrop only -- what the 3D draws over the screen's top rows is not in it,
+ *   and the per-corner points are the game's per-texel map drawn smooth across each face.
+ * State at 0x5C3100 (A4_M1LIVE's place; not with it). TIM2 [40] second passes drawn, [41] renders whose mapping was
+ * not this frame's, [42] corner tables made, [43] faces drawn again | of them those fitted flat (their texels on one
+ * line: the mean point) << 16,
+ * [44] half-sky textures made, [45] the mapping ox | oy << 16, [46] the image w | h << 16, [47] paints made, [49] ticks
+ * making the half skies | making the point tables << 16 (each half mod 65,536). */
+#ifdef A4_M1LIVE
+#error "A4_M1SKY replaces A4_M1LIVE"
+#endif
+#if !defined(A4_GPUSKY) || !defined(A4_GPUCAR) || !defined(A4_CARANIM) || !defined(A4_PHTIMERS)
+#error "A4_M1SKY: the GPU's sky and cars (A4_GPUSKY, A4_GPUCAR, A4_CARANIM's bake), TIM2 (A4_PHTIMERS)"
+#endif
+struct m1sky { uint32_t magic, mi, verts, ofs, scr, ready, desc, frame, ox, oy, w, h;
+               uint32_t tex2, t2pix, t2wh, t2hash, t2w2, t2h2, nidx; };
+#define M1S ((volatile struct m1sky *)0x005C3100u)
+#define M1S_MAGIC 0x31534D31u                    /* '1MS1' */
+_Static_assert(0x005C3100u + sizeof(struct m1sky) <= 0x005C4000u, "M1SKY within A4_SCRATCH_SIZE 0x1C3000's scratch");
+static volatile struct m1sky *m1s_get(void)
+{
+    volatile struct m1sky *S = M1S;
+    if (S->magic != M1S_MAGIC) {
+        S->mi = 0; S->ready = 0; S->frame = 0xFFFFFFFFu; S->tex2 = 0; S->t2pix = 0; S->t2wh = 0; S->t2hash = 0;
+        S->magic = M1S_MAGIC;
+    }
+    return S;
+}
+/* tex_make's var 3: the paint as RGBA8888 -- T, alpha 0 (T 0) / 0x80 (M) / 0xFF -- in strips through the readback */
+static uint32_t m1s_upload(uint32_t id, const uint32_t *ts, const uint16_t *map2)
+{
+    const uint32_t w = ts[1] + 1u, h = ts[2] + 1u;
+    const uint16_t *px16 = (const uint16_t *)ts[TS_PIX];
+    gl_bindtex(GL_TEXTURE_2D, id);
+    gl_teximage(GL_TEXTURE_2D, 0, GL_RGBA, (int)w, (int)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+    uint32_t *conv = (uint32_t *)A4_GL_READBUF;    /* 5120 RGBA texels */
+    uint32_t y0 = 0, nrow = 0;
+    for (uint32_t y = 0; y < h; y++) {
+        for (uint32_t x = 0; x < w; x++) {
+            const uint32_t i = y * w + x, t = px16[i];
+            const uint32_t r5 = t >> 11, g6 = (t >> 5) & 63u, b5 = t & 31u;
+            const uint32_t a = !t ? 0u : map2[i] ? 0x80u : 0xFFu;
+            conv[nrow * w + x] = ((r5 << 3) | (r5 >> 2)) | ((g6 << 2) | (g6 >> 4)) << 8 | ((b5 << 3) | (b5 >> 2)) << 16 | a << 24;
+        }
+        nrow++;
+        if ((nrow + 1u) * w > 5120u || y == h - 1u) {
+            gl_texsubimage(GL_TEXTURE_2D, 0, 0, (int)y0, (int)w, (int)nrow, GL_RGBA, GL_UNSIGNED_BYTE, conv);
+            y0 = y + 1u; nrow = 0;
+        }
+    }
+    tim2()[47]++;
+    return 1;
+}
+/* the paint the car flush asks for as var 3: a mode-1 texture of 16K texels or more on the screen's own table */
+static inline int m1s_paint(uint32_t d, const uint16_t *m1tab)
+{
+    const uint32_t *ts = (const uint32_t *)(uintptr_t)d;
+    return (ts[1] + 1u) * (ts[2] + 1u) >= M1_BIG && ts[1] < 256u && ts[2] < 256u
+        && (uint32_t)(uintptr_t)m1tab == *(volatile uint32_t *)A4_GL_BB;
+}
+#ifndef GL_CLAMP_TO_EDGE
+#define GL_CLAMP_TO_EDGE 0x812F
+#endif
+#endif
 /* (Re)make slot i's GL texture from ts: the alpha-map texture (var 2), the mode-1 bake
  * (var 1) or the plain/colour-key one, and record what it was made from. */
 static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t *ts, const uint16_t *m1map, const uint16_t *m1tab, int var)
@@ -4634,7 +4713,11 @@ static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t 
     for (uint32_t k = 0; k < total; k++) if (px16[k] == 0) { tr = 1; break; }
     const uint16_t *map2 = 0, *tab = 0;
     if (var == 1) { map2 = m1map; tab = m1tab; }   /* ctx[0x5c] and m1_table(ctx), taken by the caller */
+#ifdef A4_M1SKY
+    uint32_t r = var == 2 ? tex_upload_alpha(id, ts) : var == 3 ? m1s_upload(id, ts, m1map) : tex_upload(id, ts, tr, 1, map2, tab);
+#else
     uint32_t r = var == 2 ? tex_upload_alpha(id, ts) : tex_upload(id, ts, tr, 1, map2, tab);
+#endif
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -5003,7 +5086,11 @@ static inline PROF_NI int tri_tex(volatile struct glr *s, uint32_t kind, int m1,
             && TX->wh[li] == (ts[1] | (ts[2] << 16)) && TX->lu[li] == s->frames
             && (var != 1 || s->cache_fr[li] == s->frames)) ti = (int)li;
     }
+#ifdef A4_M1SKY
+    if (ti < 0) ti = tex_index(s, tsaddr, (var == 1 || var == 3) ? m1map : 0, var == 1 ? m1tab : 0, var);   /* 3: m1s_upload */
+#else
     if (ti < 0) ti = tex_index(s, tsaddr, var == 1 ? m1map : 0, var == 1 ? m1tab : 0, var);
+#endif
     if (ti < 0) return -1;
     *idp = (kind << 28) | s->cache_id[ti];
     return ti;
@@ -6433,6 +6520,9 @@ static void gobj_clear(volatile struct gstate *g)
 #ifdef A4_CARANIM
     GCANIM->mi = 0;
 #endif
+#ifdef A4_M1SKY
+    M1S->mi = 0;                                    /* the registered mesh went with the store */
+#endif
 }
 #define GOBJ_MAGIC 0x4A424F47u                   /* 'GOBJ' */
 static void gobj_reset(volatile struct gstate *g)
@@ -7076,6 +7166,17 @@ void a4_car_anim(uint32_t car)
     volatile struct gcanim *A = GCANIM;
     if (A->magic != GCANIM_MAGIC) { A->mi = 0; A->refreshed = A->refused = A->rebakes = 0; A->magic = GCANIM_MAGIC; }
     A->car = car; A->frame = ((volatile struct glr *)A4_GL_SCRATCH)->frames;
+#ifdef A4_CARANIMCEN
+    {   /* bench (the owner: "only for players car. What about racing cars?"): CRK1 [40] calls of +1B084, [41] of them
+         * with the car's +1A8 set (animated), [42] renders with a call, [43] the most calls in a render, [44] the last
+         * render's calls, [45] the last car without +1A8 */
+        volatile uint32_t *C = crk_get();
+        const uint32_t fr = ((volatile struct glr *)A4_GL_SCRATCH)->frames;
+        C[40]++; if (GO32(car + 0x1A8u)) C[41]++; else C[45] = car;
+        if (C[46] != fr) { C[46] = fr; C[42]++; C[44] = 0; }
+        if (++C[44] > C[43]) C[43] = C[44];
+    }
+#endif
 }
 static uint32_t gca_car(uint32_t verts)             /* the car +1B084 animated this render, if this is its mesh */
 {
@@ -7135,6 +7236,200 @@ static int gca_refresh(struct gcmesh *me, uint32_t mi, uint32_t info)
     return 1;
 }
 #endif
+#ifdef A4_M1SKY
+/* the paint's map at texture point (u, v) (1/16 texels, wrapped): the screen point it reflects (x | y << 16), or ~0 */
+static uint32_t m1s_at(const uint16_t *px16, const uint16_t *map2, uint32_t w, uint32_t h, int32_t u, int32_t v)
+{
+    const uint32_t tx = ((uint32_t)u >> 4) & (w - 1u), ty = ((uint32_t)v >> 4) & (h - 1u), i = ty * w + tx;
+    const uint32_t M = px16[i] ? map2[i] : 0u;
+    if (!M) return 0xFFFFFFFFu;
+    const uint32_t y = (uint32_t)(((uint64_t)M * 13421773u) >> 32);   /* M / 320 (M < 0x5400) */
+    return (M - 320u * y) | y << 16;
+}
+/* a face's texels with a point on the map -- inside it (in), else anywhere in its box: stage 0 counts them, 1 sums
+ * them, 2 takes their moments about the means (1/16 texel, 1/16 px) */
+struct m1fit { uint32_t n; int32_t sa, sb, sx, sy, ma, mb, mx, my; int64_t aa, ab, bb, ax, bx, ay, by; };
+static uint32_t m1s_scan(const uint16_t *px16, const uint16_t *map2, uint32_t w, uint32_t h, const int16_t *r, int in,
+                         int stage, struct m1fit *F)
+{
+    const int32_t u0 = r[3], v0 = r[4], u1 = r[9], v1 = r[10], u2 = r[15], v2 = r[16];
+    const int64_t A = (int64_t)(u1 - u0) * (v2 - v0) - (int64_t)(u2 - u0) * (v1 - v0);
+    int32_t lo_u = u0 < u1 ? u0 : u1, hi_u = u0 > u1 ? u0 : u1, lo_v = v0 < v1 ? v0 : v1, hi_v = v0 > v1 ? v0 : v1;
+    if (u2 < lo_u) lo_u = u2;
+    if (u2 > hi_u) hi_u = u2;
+    if (v2 < lo_v) lo_v = v2;
+    if (v2 > hi_v) hi_v = v2;
+    const int32_t tx0 = lo_u >> 4, tx1 = hi_u >> 4, ty0 = lo_v >> 4, ty1 = hi_v >> 4;
+    if ((uint32_t)(tx1 - tx0 + 1) * (uint32_t)(ty1 - ty0 + 1) > 65536u || (in && !A)) return 0;
+    uint32_t n = 0;
+    for (int32_t ty = ty0; ty <= ty1; ty++)
+        for (int32_t tx = tx0; tx <= tx1; tx++) {
+            const int32_t cx = tx * 16 + 8, cy = ty * 16 + 8;
+            if (in) {
+                int64_t e0 = (int64_t)(u2 - u1) * (cy - v1) - (int64_t)(v2 - v1) * (cx - u1);
+                int64_t e1 = (int64_t)(u0 - u2) * (cy - v2) - (int64_t)(v0 - v2) * (cx - u2);
+                int64_t e2 = (int64_t)(u1 - u0) * (cy - v0) - (int64_t)(v1 - v0) * (cx - u0);
+                if (A < 0) { e0 = -e0; e1 = -e1; e2 = -e2; }
+                if (e0 < 0 || e1 < 0 || e2 < 0) continue;
+            }
+            const uint32_t p = m1s_at(px16, map2, w, h, cx, cy);
+            if (p == 0xFFFFFFFFu) continue;
+            n++;
+            const int32_t sx = (int32_t)(p & 0xFFFFu), sy = (int32_t)(p >> 16);
+            if (stage == 1) { F->sa += tx; F->sb += ty; F->sx += sx; F->sy += sy; }
+            else if (stage == 2) {
+                const int64_t da = cx - F->ma, db = cy - F->mb, dx = sx * 16 + 8 - F->mx, dy = sy * 16 + 8 - F->my;
+                F->aa += da * da; F->ab += da * db; F->bb += db * db;
+                F->ax += da * dx; F->bx += db * dx; F->ay += da * dy; F->by += db * dy;
+            }
+        }
+    return n;
+}
+static inline int64_t m1s_abs64(int64_t v) { return v < 0 ? -v : v; }
+/* n / d for d > 0 (to 2^62), rounded to nearest: shift and subtract in 64 bits (the blob has no divide) */
+static int64_t m1s_sdivr(int64_t n, int64_t d)
+{
+    const uint64_t a = (uint64_t)m1s_abs64(n) + ((uint64_t)d >> 1), ud = (uint64_t)d;
+    uint64_t q = 0, r = 0;
+    for (int i = 63; i >= 0; i--) {
+        r = (r << 1) | ((a >> i) & 1u);
+        if (r >= ud) { r -= ud; q |= (uint64_t)1 << i; }
+    }
+    return n < 0 ? -(int64_t)q : (int64_t)q;
+}
+/* the mesh's faces on paint d with a reflecting texel in their box: each corner's screen point (x16, y16) from the
+ * least-squares plane of the map's points over the face's texels (those inside it, else those in its box; the
+ * points' mean where the texels are on one line), and the faces' corners listed for the second pass */
+static void m1s_corners(volatile struct m1sky *S, const struct gcmesh *me, uint32_t d, const uint16_t *map2)
+{
+    const uint32_t w = GO32(d + 4u) + 1u, h = GO32(d + 8u) + 1u;
+    const uint16_t *px16 = (const uint16_t *)GO32(d + 4u * TS_PIX);
+    const int16_t *rec = (const int16_t *)(GOBJ_ARENA + 12u * me->ofs);
+    int16_t *scr = (int16_t *)(uintptr_t)S->scr;
+    uint16_t *ix = (uint16_t *)(uintptr_t)(S->scr + 12u * me->nf);
+    uint32_t ni = 0;
+    volatile uint32_t *T = tim2();
+    const uint32_t t0 = a4_ntick();
+    for (uint32_t k = 0; k < me->ng; k++) {
+        if (!(me->gm1[k] & 1u) || (me->gm1[k] & 2u) || me->gd[k] != d) continue;
+        for (uint32_t o = me->gs[k]; o < (uint32_t)me->gs[k] + me->gc[k]; o++) {
+            const int16_t *r = rec + 18u * o;
+            struct m1fit F;
+            int in = 1;
+            uint32_t n = m1s_scan(px16, map2, w, h, r, 1, 0, &F);
+            if (!n) { in = 0; n = m1s_scan(px16, map2, w, h, r, 0, 0, &F); }
+            if (!n) continue;                       /* no reflecting texel near: not in the second pass */
+            F.n = n; F.sa = F.sb = F.sx = F.sy = 0;
+            m1s_scan(px16, map2, w, h, r, in, 1, &F);
+            F.ma = (int32_t)clip_sdivr((int64_t)F.sa * 16 + 8 * (int64_t)n, n);
+            F.mb = (int32_t)clip_sdivr((int64_t)F.sb * 16 + 8 * (int64_t)n, n);
+            F.mx = (int32_t)clip_sdivr((int64_t)F.sx * 16 + 8 * (int64_t)n, n);
+            F.my = (int32_t)clip_sdivr((int64_t)F.sy * 16 + 8 * (int64_t)n, n);
+            F.aa = F.ab = F.bb = F.ax = F.bx = F.ay = F.by = 0;
+            m1s_scan(px16, map2, w, h, r, in, 2, &F);
+            /* the normal equations scaled alike to 2^23 or less: det <= 2^46, numerators <= 2^47, times an offset <= 2^13 */
+            for (;;) {
+                int64_t mx = m1s_abs64(F.aa);
+                const int64_t v[6] = { F.ab, F.bb, F.ax, F.bx, F.ay, F.by };
+                for (int i = 0; i < 6; i++) if (m1s_abs64(v[i]) > mx) mx = m1s_abs64(v[i]);
+                if (mx <= (1 << 23)) break;
+                F.aa >>= 1; F.ab >>= 1; F.bb >>= 1; F.ax >>= 1; F.bx >>= 1; F.ay >>= 1; F.by >>= 1;
+            }
+            const int64_t det = F.aa * F.bb - F.ab * F.ab;
+            const int flat = det <= 0 || det * 1024 < F.aa * F.bb;   /* the texels near one line: the mean */
+            if (flat) T[43] += 1u << 16;
+            T[43]++;
+            for (uint32_t cn = 0; cn < 3u; cn++) {
+                const int64_t oa = r[6u * cn + 3u] - F.ma, ob = r[6u * cn + 4u] - F.mb;
+                int64_t x = F.mx, y = F.my;
+                if (!flat && m1s_abs64(oa) <= 8192 && m1s_abs64(ob) <= 8192) {
+                    x += m1s_sdivr((F.ax * F.bb - F.bx * F.ab) * oa + (F.bx * F.aa - F.ax * F.ab) * ob, det);
+                    y += m1s_sdivr((F.ay * F.bb - F.by * F.ab) * oa + (F.by * F.aa - F.ay * F.ab) * ob, det);
+                }
+                if (x < -32768) x = -32768;
+                if (x > 32767) x = 32767;
+                if (y < -32768) y = -32768;
+                if (y > 32767) y = 32767;
+                scr[2u * (3u * o + cn)] = (int16_t)x; scr[2u * (3u * o + cn) + 1u] = (int16_t)y;
+                ix[ni++] = (uint16_t)(3u * o + cn);
+            }
+#ifdef A4_M1SKYCEN
+            /* bench: [48] reflecting faces | fitted from their box's texels << 16, [50] the corners' interpolation off
+             * the map (px, |dx| + |dy|) summed over [51] the texels inside the faces, [52] the most texels in a box */
+            {   const int32_t u0 = r[3], v0 = r[4], u1 = r[9], v1 = r[10], u2 = r[15], v2 = r[16];
+                const int64_t A = (int64_t)(u1 - u0) * (v2 - v0) - (int64_t)(u2 - u0) * (v1 - v0);
+                int32_t lo_u = u0 < u1 ? u0 : u1, hi_u = u0 > u1 ? u0 : u1, lo_v = v0 < v1 ? v0 : v1, hi_v = v0 > v1 ? v0 : v1;
+                if (u2 < lo_u) lo_u = u2;
+                if (u2 > hi_u) hi_u = u2;
+                if (v2 < lo_v) lo_v = v2;
+                if (v2 > hi_v) hi_v = v2;
+                const int32_t tx0 = lo_u >> 4, tx1 = hi_u >> 4, ty0 = lo_v >> 4, ty1 = hi_v >> 4;
+                const uint32_t box = (uint32_t)(tx1 - tx0 + 1) * (uint32_t)(ty1 - ty0 + 1);
+                if (box > T[52]) T[52] = box;
+                T[48] += 1u + (in ? 0u : 1u << 16);
+                const int16_t *q = scr + 2u * 3u * o;
+                if (A && box <= 65536u) {
+                    const uint32_t aA = (uint32_t)(A < 0 ? -A : A);
+                    for (int32_t ty = ty0; ty <= ty1; ty++)
+                        for (int32_t tx = tx0; tx <= tx1; tx++) {
+                            const int32_t cx = tx * 16 + 8, cy = ty * 16 + 8;
+                            int64_t w0 = (int64_t)(u2 - u1) * (cy - v1) - (int64_t)(v2 - v1) * (cx - u1);
+                            int64_t w1 = (int64_t)(u0 - u2) * (cy - v2) - (int64_t)(v0 - v2) * (cx - u2);
+                            int64_t w2 = (int64_t)(u1 - u0) * (cy - v0) - (int64_t)(v1 - v0) * (cx - u0);
+                            if (A < 0) { w0 = -w0; w1 = -w1; w2 = -w2; }
+                            if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+                            const uint32_t p = m1s_at(px16, map2, w, h, cx, cy);
+                            if (p == 0xFFFFFFFFu) continue;
+                            const int64_t ex = clip_sdivr(w0 * q[0] + w1 * q[2] + w2 * q[4], aA);
+                            const int64_t ey = clip_sdivr(w0 * q[1] + w1 * q[3] + w2 * q[5], aA);
+                            const int64_t dx = ex - ((int32_t)(p & 0xFFFFu) * 16 + 8), dy = ey - ((int32_t)(p >> 16) * 16 + 8);
+                            T[50] += (uint32_t)(((dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy)) >> 4);
+                            T[51]++;
+                        }
+                }
+            }
+#endif
+        }
+    }
+    S->nidx = ni; S->desc = d; S->ready = 1; T[42]++;
+    T[49] += ((a4_ntick() - t0) & 0xFFFFu) << 16;   /* the point tables' making, ticks (high half) */
+}
+/* the paint this car's second pass reflects on (its mode-1 groups drawn from it as var 3), or 0: none this frame */
+static uint32_t m1s_will(const struct gcmesh *me, const uint16_t *m1map, const uint16_t *m1tab)
+{
+    volatile struct m1sky *S = m1s_get();
+    if (S->mi != (uint32_t)(me - GCMESH) + 1u || S->verts != me->verts || S->ofs != me->ofs || !S->tex2) return 0;
+    uint32_t d = 0;
+    for (uint32_t k = 0; k < me->ng && !d; k++)
+        if ((me->gm1[k] & 1u) && !(me->gm1[k] & 2u) && m1s_paint(me->gd[k], m1tab)) d = me->gd[k];
+    if (!d || ((!S->ready || S->desc != d) && !m1map)) return 0;
+    return d;
+}
+#define M1S_VAR(me, k, d) (((d) && (me)->gd[k] == (d) && ((me)->gm1[k] & 1u) && !((me)->gm1[k] & 2u)) ? 3 : GC_M1(me, k))
+/* after a car's groups: its mode-1 faces on paint d again, over the half sky at their screen points (1 - dst a, 1) */
+static void m1s_pass(volatile struct glr *s, const struct gcmesh *me, uint32_t d, uint32_t base, const uint16_t *m1map)
+{
+    volatile struct m1sky *S = m1s_get();
+    if (!S->ready || S->desc != d) m1s_corners(S, me, d, m1map);
+    volatile uint32_t *T = tim2();
+    if (S->frame != s->frames) T[41]++;           /* the backdrop's mapping is an earlier frame's (still drawn) */
+    const int32_t W2 = (int32_t)S->t2w2, H2 = (int32_t)S->t2h2;
+    int TM[16];
+    for (int i = 0; i < 16; i++) TM[i] = 0;
+    TM[0] = 4096 >> W2; TM[5] = 4096 >> H2; TM[10] = FX; TM[15] = FX;    /* x16 screen points to the half sky */
+    TM[12] = (int32_t)(S->ox << (16 - W2)); TM[13] = (int32_t)(S->oy << (16 - H2));
+    gl_bindtex(GL_TEXTURE_2D, S->tex2);
+    gl_loadmatrixx(TM);                             /* (the texture matrix is current) */
+    gl_texcoordptr(2, GL_SHORT, 4, (const void *)(uintptr_t)S->scr);
+    gl_enable(GL_BLEND); gl_blendfunc(GL_ONE_MINUS_DST_ALPHA, GL_ONE);
+    gl_depthfunc(GL_EQUAL); gl_depthmask(0);
+    if (S->nidx)                                    /* the faces that reflect (m1s_corners' list) */
+        gl_drawelements(GL_TRIANGLES, (int)S->nidx, GL_UNSIGNED_SHORT, (const void *)(uintptr_t)(S->scr + 12u * me->nf));
+    gl_disable(GL_BLEND); gl_depthfunc(GL_GEQUAL); gl_depthmask(1);
+    gl_texcoordptr(2, GL_SHORT, 12, (const void *)(base + 6u));
+    T[40]++;
+}
+#endif
 /* the car mesh's records in the arena (built once; 0 if it cannot be) */
 static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcstate *c, uint32_t verts, uint32_t nv,
                                 uint32_t faces, uint32_t nf, uint32_t w1)
@@ -7171,7 +7466,21 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
         }
         xu = (4u * (1u + nfa + npa) + 11u) / 12u;
     }
-    if (g->full || c->nmesh >= GCAR_NM || GOBJ_ARENA + (g->aused + 3u * nf + xu) * 12u > GOBJ_STAGE) {
+#ifdef A4_M1SKY
+    /* the player's car (the mesh +1B084 animates) with a big mode-1 paint: room for its corners' screen points (3 nf x
+     * 4 bytes: nf records) and their list for the second pass (3 nf x 2 bytes) after the rest. Only that one: the
+     * registration is a single slot, and an opponent's mesh baked after it would take the pass away from it */
+    uint32_t xs = 0;
+    for (uint32_t f = 0; acar && f < nf && !xs; f++) {
+        const uint32_t fp = faces + 52u * f, fl = GO32(fp + 4u), d = GO32(fp + 0x30u);
+        if (((fl & 0x4100000u) ? w1 : (w1 & ~0x4100000u)) == 0x104000u && d
+            && (GO32(d + 4u) + 1u) * (GO32(d + 8u) + 1u) >= M1_BIG && GO32(d + 4u) < 256u && GO32(d + 8u) < 256u)
+            xs = nf + (nf + 1u) / 2u;
+    }
+#else
+    const uint32_t xs = 0;
+#endif
+    if (g->full || c->nmesh >= GCAR_NM || GOBJ_ARENA + (g->aused + 3u * nf + xu + xs) * 12u > GOBJ_STAGE) {
         g->full = 1; c->refused_full++; return 0;
     }
     uint32_t *const aw = (uint32_t *)(GOBJ_ARENA + 12u * (g->aused + 3u * nf));
@@ -7262,6 +7571,17 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
         volatile struct gcanim *A = GCANIM;
         A->mi = c->nmesh + 1u; A->verts = verts; A->ofs = me->ofs; A->info = (uint32_t)(uintptr_t)aw;
         g->aused += xu;
+    }
+#endif
+#ifdef A4_M1SKY
+    if (xs) {                                       /* the screen points are made at the first draw (m1s_corners) */
+        volatile struct m1sky *S = m1s_get();
+        S->mi = c->nmesh + 1u; S->verts = verts; S->ofs = me->ofs; S->ready = 0;
+        S->scr = GOBJ_ARENA + 12u * (g->aused + 3u * nf);   /* after the records and the animation's words */
+        g->aused += xs;
+#ifdef A4_M1SKYCEN
+        tim2()[56]++;                               /* bench: registrations */
+#endif
     }
 #endif
     g->aused += 3u * nf; c->nmesh++; c->built++;
@@ -7501,11 +7821,16 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
         const uint32_t base = GOBJ_ARENA + 12u * me->ofs;
         gl_vertexptr(3, GL_SHORT, 12, (const void *)base);
         gl_texcoordptr(2, GL_SHORT, 12, (const void *)(base + 6u));
+#ifdef A4_M1SKY
+        const uint32_t skyd = m1s_will(me, m1map, m1tab);
+#endif
         for (uint32_t k = 0; k < me->ng; k++) {
             uint32_t id; int wsh, hsh;
 #ifdef A4_CARPROBE
             crk_get()[45]++;
             if (tri_tex(s, KIND_TEX, GC_M1(me, k), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) { crk_get()[44]++; continue; }
+#elif defined(A4_M1SKY)
+            if (tri_tex(s, KIND_TEX, M1S_VAR(me, k, skyd), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
 #else
             if (tri_tex(s, KIND_TEX, GC_M1(me, k), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
 #endif
@@ -7529,6 +7854,9 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
             gl_drawarrays(GL_TRIANGLES, 3 * (int)me->gs[k], 3 * (int)me->gc[k]); draws++;
 #endif
         }
+#ifdef A4_M1SKY
+        if (skyd) { m1s_pass(s, me, skyd, base, m1map); lastid = 0xFFFFFFFFu; draws++; }
+#endif
     }
 #ifdef A4_CARPROBE
     {   uint32_t u = 0;
@@ -7829,13 +8157,23 @@ static void cvr_redraw(volatile struct glr *s)
             const uint32_t base = GOBJ_ARENA + 12u * me->ofs;
             gl_vertexptr(3, GL_SHORT, 12, (const void *)base);
             gl_texcoordptr(2, GL_SHORT, 12, (const void *)(base + 6u));
+#ifdef A4_M1SKY
+            const uint32_t skyd = m1s_will(me, m1map, m1tab);
+#endif
             for (uint32_t k = 0; k < me->ng; k++) {
                 uint32_t id; int wsh, hsh;
+#ifdef A4_M1SKY
+                if (tri_tex(s, KIND_TEX, M1S_VAR(me, k, skyd), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
+#else
                 if (tri_tex(s, KIND_TEX, GC_M1(me, k), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
+#endif
                 if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
                 if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
                 gl_drawarrays(GL_TRIANGLES, 3 * (int)me->gs[k], 3 * (int)me->gc[k]); draws++;
             }
+#ifdef A4_M1SKY
+            if (skyd) { m1s_pass(s, me, skyd, base, m1map); lastid = 0xFFFFFFFFu; draws++; }
+#endif
         }
     v->k[4]++; v->k[5] += draws; v->k[7] += odraws;   /* k[7]: the objects' share (round 78b) */
     for (uint32_t j = 0; j < 6u; j++) v->ob[j] = 0;
@@ -9162,6 +9500,75 @@ static void sky_trace(uint32_t kind, uint32_t info)
 }
 #endif
 #endif
+#ifdef A4_M1SKY
+#define M1S_F 64u                                    /* the half sky's rows above the image: the top fill's colour */
+static inline uint32_t m1s_half(uint32_t c)         /* twice the span's quarter, channel by channel */
+{
+    return ((((c >> 11) & 31u) >> 2) << 12) | ((((c >> 5) & 63u) >> 2) << 6) | (((c & 31u) >> 2) << 1);
+}
+/* the GPU's backdrop this frame: the screen-to-image offset of its runs (one offset, wrapping at the image's power-of-two
+ * width), and the half sky made again when the image (or the top fill's colour) is another */
+static void m1s_sky(volatile struct glr *s, volatile struct skys *k, const struct skq *q, int nq)
+{
+    volatile struct m1sky *S = m1s_get();
+    const uint16_t *hd = (const uint16_t *)k->hdr;
+    const uint32_t w = hd[0], h = hd[1], pix = ((const uint32_t *)hd)[4];
+    if ((1u << k->tw2) != w || !pix) return;        /* the runs wrap at w only when the texture is exactly w wide */
+    int have = 0;
+    uint32_t ox = 0, oy = 0;
+    for (int i = 0; i < nq; i++) {
+        if ((q[i].id >> 28) != KIND_TEX) continue;
+        const uint32_t ic = (uint32_t)q[i].S0 >> (16u - k->tw2), ir = (uint32_t)q[i].T0 >> (16u - k->th2);
+        const uint32_t x = (ic - (uint32_t)q[i].x0) & (w - 1u), y = M1S_F + ir - (uint32_t)q[i].y0;
+        if (have && (x != ox || y != oy)) return;   /* runs not one picture: the mapping kept from before */
+        ox = x; oy = y; have = 1;
+    }
+    if (!have) return;
+    /* the top colour as the half sky holds it: LA's flickers 0x1061 / 0x1060 (a blue bit the half drops), and each
+     * flicker made the 256 KB texture again (~48 ms of uploads on the MBX) until keyed by its half */
+    const uint32_t topc = m1s_half(k->top_b ? (k->top_c & 0xFFFFu) : ((const uint16_t *)(uintptr_t)pix)[0]);
+    if (!S->tex2 || S->t2pix != pix || S->t2wh != (w | h << 16) || S->t2hash != (k->thash ^ topc)) {
+#ifdef A4_M1SKYCEN
+        /* bench: why the half sky is made again -- TIM2 [53] the image's address | its size << 8 | its hash or the top
+         * colour << 16 (counts), [54] the last top colour (old | new << 16), [55] k->top_b | the frame << 8 */
+        if (S->tex2) {
+            volatile uint32_t *T = tim2();
+            T[53] += (S->t2pix != pix ? 1u : 0u) + (S->t2wh != (w | h << 16) ? 1u << 8 : 0u) + (S->t2hash != (k->thash ^ topc) ? 1u << 16 : 0u);
+            T[54] = (S->t2hash ^ k->thash) | topc << 16; T[55] = k->top_b | s->frames << 8;
+        }
+#endif
+        const uint32_t t0 = a4_ntick();
+        uint32_t id = S->tex2, lh = 0;
+        while ((1u << lh) < M1S_F + h) lh++;
+        if (!id) { gl_gentex(1, &id); if (!id) return; }
+        gl_bindtex(GL_TEXTURE_2D, id);
+        gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        gl_texparamx(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        gl_teximage(GL_TEXTURE_2D, 0, GL_RGB, (int)w, (int)(1u << lh), 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, 0);
+        const uint16_t *px = (const uint16_t *)(uintptr_t)pix;
+        uint16_t *conv = (uint16_t *)A4_GL_READBUF;    /* 10240 texels */
+        const uint32_t H = 1u << lh, top = topc;
+        uint32_t y0 = 0, nrow = 0;
+        for (uint32_t y = 0; y < H; y++) {
+            const uint32_t iy = y < M1S_F ? 0xFFFFFFFFu : (y - M1S_F < h ? y - M1S_F : h - 1u);   /* below: the last row */
+            for (uint32_t x = 0; x < w; x++) conv[nrow * w + x] = (uint16_t)(iy == 0xFFFFFFFFu ? top : m1s_half(px[iy * w + x]));
+            nrow++;
+            if ((nrow + 1u) * w > 10240u || y == H - 1u) {
+                gl_texsubimage(GL_TEXTURE_2D, 0, 0, (int)y0, (int)w, (int)nrow, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, conv);
+                y0 = y + 1u; nrow = 0;
+            }
+        }
+        S->tex2 = id; S->t2pix = pix; S->t2wh = w | h << 16; S->t2hash = k->thash ^ topc;
+        S->t2w2 = k->tw2; S->t2h2 = lh;
+        tim2()[44]++; tim2()[46] = w | h << 16;
+        tim2()[49] += (a4_ntick() - t0) & 0xFFFFu;    /* the half skies' making, ticks (low half) */
+    }
+    S->ox = ox; S->oy = oy; S->frame = s->frames;
+    tim2()[45] = ox | oy << 16;
+}
+#endif
 /* at the frame's first triangle, after the clear: the recorded backdrop drawn, before the mesh list */
 static void sky_frame_begin(volatile struct glr *s)
 {
@@ -9175,6 +9582,29 @@ static void sky_frame_begin(volatile struct glr *s)
     s->bfill = 0;
     k->state = SK_GPU;
     SKYCK2[67]++; SKYCK2[63] = k->fb;
+#ifdef A4_M1SKY
+    m1s_sky(s, k, q, nq);
+#endif
+#ifdef A4_SKYDIMCEN
+    {   /* bench (round 88, the reflection on the GPU): TIM2 [26] the image's w | h << 16, [27] the texture's log2 w |
+         * log2 h << 8 | runs << 16 | quads << 24, [28..30] each run's screen x | width << 16, [31..33] its image column
+         * | row << 16, [34] the band's first screen row | its rows << 16, [35] frames, [36] frames whose runs do not
+         * wrap at the image's width (run 2's column 0 at run 1's end) */
+        volatile uint32_t *T = tim2();
+        const uint16_t *hd = (const uint16_t *)k->hdr;
+        T[26] = hd[0] | (uint32_t)hd[1] << 16; T[27] = k->tw2 | k->th2 << 8 | k->nrun << 16 | (uint32_t)nq << 24;
+        for (uint32_t i = 0; i < k->nrun && i < 3u; i++) {
+            const struct skq *qq = 0;
+            for (int j = 0; j < nq; j++) if ((q[j].id >> 28) == KIND_TEX && qq == 0) { int c = 0; for (int m = 0; m < j; m++) c += (q[m].id >> 28) == KIND_TEX; if ((uint32_t)c == i) qq = &q[j]; }
+            if (!qq) continue;
+            T[28 + i] = (uint32_t)qq->x0 | (uint32_t)(qq->x1 - qq->x0) << 16;
+            T[31 + i] = ((uint32_t)qq->S0 >> (16u - k->tw2)) | ((uint32_t)qq->T0 >> (16u - k->th2)) << 16;
+            T[34] = (uint32_t)qq->y0 | (uint32_t)(qq->y1 - qq->y0) << 16;
+        }
+        T[35]++;
+        if (k->nrun == 2u && ((T[32] & 0xFFFFu) != 0u || (T[29] & 0xFFFFu) != (T[28] >> 16))) T[36]++;
+    }
+#endif
 #ifdef A4_SKYCHECK
     sky_check_begin(k);
 #endif
