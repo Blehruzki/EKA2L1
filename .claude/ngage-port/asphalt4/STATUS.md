@@ -128,6 +128,9 @@ check build comparing against the game's own result where possible), log it, upd
 | New York's snow (A4_SNOWFAST) | done, bench | New York's 2D phase -0.9 to -1.1 ms with the above (model) | exact: 193 renders against the game's +286A4, 0 flake bytes, 0 px; 63% of flake pieces skipped (clipped) |
 | the blur two pixels at once (A4_BLURFAST2) | dropped | none on the model | exact, but the blur is memory-bound |
 | **r91a (C92 = C91 + A4_CARANIM, A4_M1LIVE, A4_PAINTFWD, A4_SNOWFAST)** | **sent** (round 88; sha256 a9006828e0088011..., 1,015,124 bytes) | Instant Play 2,446 frames in 300 s (r90b's battery 2,379); renders about even, New York ~0.5 ms better; the reflection ~0.4 ms a render on the model | the next phone round: the tyres, the reflection's cost and look, New York's 2D phase |
+| phone round r91a (LA, Mini Cooper) | logged | LA unboosted 49.7 ms a render (r90b 53.1), the 2D phase 2.39 ms (3.6); but 75 ms or more 4.4% (0.2%) | the tyres spin; the reflection's refresh cost the phone 18.2 ms of uploads (the MBX ~2.3 ms a call), so it stepped every 8th render -- the owner's "every half a second" -- and each step was a slow render; the opponents' wheels are stock (the game animates the player's only) |
+| the reflection on the GPU (A4_M1SKY) | done, bench | no texture changed during a race; one-time at a race's start: a point table (36 ms on the model) and the half sky (~48 ms of uploads on the phone, by r91a's price) | the player's car's 56 reflecting faces drawn again over a half-value sky at each corner's screen point (a least-squares plane of the game's map, 2.79 px a texel off it); mapped every frame on all six maps (Dubai's from the sky routine's own copies); off after 8 frames with no sky |
+| **r91b (C93 = C91 + A4_CARANIM, A4_M1SKY, A4_PAINTFWD, A4_SNOWFAST)** | battery passed (bat93); not sent | six maps 5,682 frames, Paris 400 s 3,675 (pa91b 3,667); Instant Play 2,312 / 2,415 in two runs of different scene weight (m91b 2,446) | sha256 539751517cf14cb7..., 1,021,832 bytes; the next phone round: the reflection's look and its pass cost, the one-time start (TIM2 [49]), no 75 ms steps |
 
 ## Versions kept (the owner, round 88: "keep track of this version and the redesign one ... I don't want to lose this one")
 
@@ -137,6 +140,10 @@ The incremental line ends here as **r90**; any redesign is a separate line and m
 |---|---|---|---|---|
 | **r90b** (sent in round 88) | flags/C91.flags | C90 + A4_RESTTIME (phone timers for the post, the convert, the shadow's nested flushes) | 93391d95d55aa6e2e34e5481203b7a75ca8f13e6f0b30b53c1cd0149180bbb2a | 1,006,472 |
 | r90a | flags/C90.flags | the same without those timers | 6ebb8ba608ae307b06ae7f46de64422ea28b7cdb54fba480c5efd70d70bf8f36 | 1,004,860 |
+| r91a (sent in round 88, after r90b) | flags/C92.flags | C91 + A4_CARANIM, A4_M1LIVE, A4_PAINTFWD, A4_SNOWFAST | a9006828e00880117e141a95acb0e6eb7938c09de5fca9718ed16cb79a3a861a | 1,015,124 |
+
+- **r91a's tree**: commit `548bc6c` (built there); r90a, r90b and r91a all rebuild to the bytes above from the r91b
+  work's tree too (checked after each change of round 88's reflection work, MBX.md).
 
 - **Tree**: commit `7fe92d3b42dfa3b8b859aca8611057dcc35d5992` on the fork's `ngage-port` (both build from it; the branch
   is never rewritten). `git checkout 7fe92d3` gives the exact sources.

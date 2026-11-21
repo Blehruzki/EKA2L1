@@ -14616,3 +14616,39 @@ Runs (bench, C93 = C91 + A4_CARANIM + A4_M1SKY + A4_PAINTFWD + A4_SNOWFAST):
   not drawn << 16.
 - C90 / C91 / C92 rebuilt again: r90a's, r90b's, r91a's bytes. **r91b candidate rebuilt: a4_r91b_cand.exe sha256
   539751517cf14cb7..., 1,021,832 bytes**; bat93 run again on it (the first bat93 was d81b9527...).
+- **bat93 on r91b (539751517cf14cb7...)**: at93 (six maps 45 s, one session) framestat 5,682, the boot fault only;
+  passes on an earlier mapping 0 and none skipped on every map; one point table and one half sky a race. TIM2 [49]:
+  **a point table ~38 ticks (77 before the cheaper scan)**, a half sky ~22. m93 (Instant Play 300 s, modelled N95, 7
+  marks): framestat 2,312, the boot fault only; one point table (**36 ms on the model**, was 72) and one half sky
+  (22 ms) for the race; 1.96 passes a scene, none stale or skipped. Its frames against the first bat93's 2,415: a
+  heavier race, not the build -- object groups 31 a scene against 22, the shadow's draws 61 against 46, corners
+  13,637 against 12,050; the cars' block (8/8/28/21 against 8/8/28/20) and the car flush (1.35 / 1.43 ms) as before;
+  the host behind the model 0.0-0.2%. pa93 (Paris 400 s, 7 marks) framestat 3,675 (pa91b 3,667), the boot fault only;
+  one point table and one half sky; **the sky not drawn between the 270 s and 330 s marks: 4 passes on a held
+  mapping, 307 not drawn** (the paint plain there, as stock with no sky in its top rows). rules.py: every self-test
+  passes but titles.py --check (it needs Asphalt 1's N-Gage image, not in this container; nothing here touches it).
+
+Rule 4, before r91b goes out:
+a. The guesses. (1) The MBX's cost of the second pass -- 56 faces (168 corners) drawn again with ~12 state calls, two
+   passes a scene -- which the model prices at almost nothing; the phone's car flush (frec3.py timers) and FRC4's renders
+   say. (2) The one-time work at a race's start: the half sky's 13 uploads (256 KB; ~48 ms at r91a's measured price)
+   and the point table (36 ms on the model) -- TIM2 [49] times both on the phone. (3) That the MBX draws the
+   same corners to the same depths twice (glDrawArrays, then glDrawElements, with GL_EQUAL): GL ES 1.1's invariance
+   rules cover a second pass that changes only blending, depth function and texturing; if the driver broke it the
+   reflection would be missing or speckled -- the owner's eye. (4) GL_CLAMP_TO_EDGE (GL ES 1.1 core) on the N95's
+   driver. (5) The look against stock's: the backdrop only (the 3D over the top rows and Dubai's sun not in it), the
+   map as a plane per face (2.79 px a texel off it), nothing after 8 frames without a sky -- chosen differences.
+b. Read back: m1s_upload (alpha 0 / 0x80 / 0xFF, the strips within the readback buffer); m1s_scan (the edge tests'
+   signs against the face's winding, the stages, the box bound); m1s_corners (the means, the normal equations' scaling
+   bounds -- 2^23, det <= 2^46, numerators <= 2^47, offsets <= 2^13, sums <= 2^61 -- the 64-bit divide, the clamp,
+   the index list inside its reservation: nf + (nf + 1) / 2 records for 3 nf points and 3 nf indices); the
+   registration (the player's car only, gobj_clear forgets it); m1s_will / M1S_VAR at both car draws; m1s_pass (the
+   hold, the texture matrix's scale and offset, the state restored -- texcoord pointer, blending, depth function and
+   mask; the next car's groups reload the texture matrix, identity after the loop); the observer against sky_layout's
+   arithmetic (rows 2w bytes apart, the wrap at a power-of-two width); m1s_commit before the binds of both callers;
+   the texture cache's key (tsaddr | var keeps the var-3 paint apart from var 1); C90 / C91 / C92's bytes unchanged.
+c. State the bench did not enter: a player car whose paint is not big or not on the screen's table (no pass: var 1,
+   as r90b); the car re-baked mid-race (the point table made again: TIM2 [42] counts it; not seen in 400 s of Paris);
+   a sky image not a power of two wide (no mapping: the hold, then no reflection; every panorama here is); a half sky
+   whose upload fails (no GL error check -- a blank sky texture would add nothing); the MBX's texture memory: the paint
+   now RGBA8888 (twice its 565 size) and the half sky 256 KB more.
