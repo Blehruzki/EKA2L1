@@ -14597,3 +14597,22 @@ Runs (bench, C93 = C91 + A4_CARANIM + A4_M1SKY + A4_PAINTFWD + A4_SNOWFAST):
   sky a race (TIM2 [42], [44] 1..6); 56 faces drawn again (10 flat) each race. TIM2 [49] (unmodelled bench, host-speed
   ticks): a half sky ~22 ticks, a point table ~77 (each race). LA's posts 1100-1107 cropped: the rear window's
   reflection changes every post, the car as at msla3.
+- m93 (Instant Play 300 s on the modelled N95, 7 marks): framestat **2,415** (m91b 2,446; m90b 2,379), the boot fault
+  only; 1.92 passes a scene, 0 on an earlier mapping; **one point table (72 ms on the model) and one half sky (23 ms)
+  for the race** -- both at the car's first draw, the intro. The half sky's 13 uploads are ~48 ms at the phone's
+  measured price (r91a), so ~120 ms once at a race's start.
+- pa93 (Paris 400 s, 7 marks): framestat 3,652 (pa91b 3,667), the boot fault only; one point table and one half sky
+  for the whole race (no re-bake of the car mid-race). **313 passes on an earlier mapping, all between the 300 s and
+  360 s marks** -- the reason not yet known (no sky drawn there, or runs not one picture): pacen (+ A4_M1SKYCEN) asks.
+- The point table made cheaper with the same output: each face's box first, stopping at the first reflecting texel
+  (508 of the Veyron's 564 faces reflect nowhere and were tested texel by texel against their edges, then their box
+  scanned again); then inside it, also stopping at the first. pacen checks the census's sums are unchanged.
+- pacen (+ A4_M1SKYCEN, Paris 400 s): **the cheaper point table gives the same output** (56 faces, 10 flat, 6 from their
+  box; 17,610 px over 6,308 texels -- as mscen). The stale passes' cause: frames whose sky the game did not draw at
+  all ("not seen" 87 frames, 8 of them with the car drawn on an earlier mapping; runs not one picture 0). On such a
+  frame stock reads whatever the 3D put in the top rows -- no sky -- so a held sky is right only across a short gap:
+  **the last mapping is drawn on for up to 8 frames (M1S_HOLD), then the pass is not drawn until the sky is seen
+  again** (the paint stays var 3: var 1 would re-bake it, r90b's hitch). TIM2 [41] = drawn on an earlier mapping |
+  not drawn << 16.
+- C90 / C91 / C92 rebuilt again: r90a's, r90b's, r91a's bytes. **r91b candidate rebuilt: a4_r91b_cand.exe sha256
+  539751517cf14cb7..., 1,021,832 bytes**; bat93 run again on it (the first bat93 was d81b9527...).

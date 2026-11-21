@@ -4633,13 +4633,13 @@ static void m1l_refresh(volatile struct glr *s)
  *   plane of the map's points over its texels -- the per-texel map drawn as the nearest plane across each face;
  * - the screen-to-sky mapping each frame from the sky routine's own row copies (m1s_obs_*: on the GPU's frames and on
  *   software ones alike -- Dubai's sun keeps its sky software), committed at the car's draw (m1s_commit). So the
- *   reflection follows the picture every frame, but holds the backdrop only -- what the 3D draws over the screen's top rows is not in it,
- *   and the per-corner points are the game's per-texel map drawn smooth across each face.
- * State at 0x5C3100 (A4_M1LIVE's place; not with it). TIM2 [40] second passes drawn, [41] renders whose mapping was
- * not this frame's, [42] corner tables made, [43] faces drawn again | of them those fitted flat (their texels on one
- * line: the mean point) << 16,
- * [44] half-sky textures made, [45] the mapping ox | oy << 16, [46] the image w | h << 16, [47] paints made, [49] ticks
- * making the half skies | making the point tables << 16 (each half mod 65,536). */
+ *   reflection follows the picture every frame, but holds the backdrop only -- what the 3D draws over the screen's
+ *   top rows is not in it, and the per-corner points are the game's per-texel map drawn smooth across each face.
+ * State at 0x5C3100 (A4_M1LIVE's place; not with it). TIM2 [40] second passes drawn, [41] of them on an earlier frame's
+ * mapping | passes not drawn, the sky unseen for more than M1S_HOLD frames << 16, [42] point tables made, [43] faces
+ * drawn again | of them those fitted flat (their texels on one line: the mean point) << 16, [44] half skies made,
+ * [45] the mapping ox | oy << 16, [46] the image w | h << 16, [47] paints made, [49] ticks making the half skies |
+ * making the point tables << 16 (each half mod 65,536). */
 #ifdef A4_M1LIVE
 #error "A4_M1SKY replaces A4_M1LIVE"
 #endif
@@ -4663,6 +4663,7 @@ static volatile struct m1sky *m1s_get(void)
     return S;
 }
 #define M1S_F 64u                                    /* the half sky's rows above the image: the top fill's colour */
+#define M1S_HOLD 8u                                 /* frames a mapping is drawn on after the sky was last seen */
 static inline uint32_t m1s_half(uint32_t c)         /* twice the span's quarter, channel by channel */
 {
     return ((((c >> 11) & 31u) >> 2) << 12) | ((((c >> 5) & 63u) >> 2) << 6) | (((c & 31u) >> 2) << 1);
@@ -7254,8 +7255,8 @@ static uint32_t m1s_at(const uint16_t *px16, const uint16_t *map2, uint32_t w, u
     const uint32_t y = (uint32_t)(((uint64_t)M * 13421773u) >> 32);   /* M / 320 (M < 0x5400) */
     return (M - 320u * y) | y << 16;
 }
-/* a face's texels with a point on the map -- inside it (in), else anywhere in its box: stage 0 counts them, 1 sums
- * them, 2 takes their moments about the means (1/16 texel, 1/16 px) */
+/* a face's texels with a point on the map -- inside it (in), else anywhere in its box: stage 0 stops at the first
+ * (is there one), 1 counts and sums them, 2 takes their moments about the means (1/16 texel, 1/16 px) */
 struct m1fit { uint32_t n; int32_t sa, sb, sx, sy, ma, mb, mx, my; int64_t aa, ab, bb, ax, bx, ay, by; };
 static uint32_t m1s_scan(const uint16_t *px16, const uint16_t *map2, uint32_t w, uint32_t h, const int16_t *r, int in,
                          int stage, struct m1fit *F)
@@ -7283,6 +7284,7 @@ static uint32_t m1s_scan(const uint16_t *px16, const uint16_t *map2, uint32_t w,
             const uint32_t p = m1s_at(px16, map2, w, h, cx, cy);
             if (p == 0xFFFFFFFFu) continue;
             n++;
+            if (stage == 0) return n;
             const int32_t sx = (int32_t)(p & 0xFFFFu), sy = (int32_t)(p >> 16);
             if (stage == 1) { F->sa += tx; F->sb += ty; F->sx += sx; F->sy += sy; }
             else if (stage == 2) {
@@ -7323,12 +7325,12 @@ static void m1s_corners(volatile struct m1sky *S, const struct gcmesh *me, uint3
         for (uint32_t o = me->gs[k]; o < (uint32_t)me->gs[k] + me->gc[k]; o++) {
             const int16_t *r = rec + 18u * o;
             struct m1fit F;
-            int in = 1;
-            uint32_t n = m1s_scan(px16, map2, w, h, r, 1, 0, &F);
-            if (!n) { in = 0; n = m1s_scan(px16, map2, w, h, r, 0, 0, &F); }
-            if (!n) continue;                       /* no reflecting texel near: not in the second pass */
-            F.n = n; F.sa = F.sb = F.sx = F.sy = 0;
-            m1s_scan(px16, map2, w, h, r, in, 1, &F);
+            /* the box first (most of a paint's faces reflect nowhere: 508 of the Veyron's 564), then inside the face */
+            if (!m1s_scan(px16, map2, w, h, r, 0, 0, &F)) continue;   /* not in the second pass */
+            const int in = m1s_scan(px16, map2, w, h, r, 1, 0, &F) != 0;
+            F.sa = F.sb = F.sx = F.sy = 0;
+            const uint32_t n = m1s_scan(px16, map2, w, h, r, in, 1, &F);
+            F.n = n;
             F.ma = (int32_t)clip_sdivr((int64_t)F.sa * 16 + 8 * (int64_t)n, n);
             F.mb = (int32_t)clip_sdivr((int64_t)F.sb * 16 + 8 * (int64_t)n, n);
             F.mx = (int32_t)clip_sdivr((int64_t)F.sx * 16 + 8 * (int64_t)n, n);
@@ -7484,7 +7486,13 @@ static void m1s_pass(volatile struct glr *s, const struct gcmesh *me, uint32_t d
     volatile struct m1sky *S = m1s_get();
     if (!S->ready || S->desc != d) m1s_corners(S, me, d, m1map);
     volatile uint32_t *T = tim2();
-    if (S->frame != s->frames) T[41]++;           /* the backdrop's mapping is an earlier frame's (still drawn) */
+    /* a frame whose sky the game did not draw (Paris: 313 passes in a minute, pa93) has no sky in its top rows for
+     * stock to read either: the last mapping is held across a gap of up to M1S_HOLD frames, then no reflection until
+     * the sky is drawn again -- the paint stays var 3 (falling back to var 1 would re-bake it, r90b's hitch) */
+    if (S->frame != s->frames) {
+        if (s->frames - S->frame > M1S_HOLD) { T[41] += 1u << 16; return; }
+        T[41]++;                                    /* drawn on an earlier frame's mapping */
+    }
     const int32_t W2 = (int32_t)S->t2w2, H2 = (int32_t)S->t2h2;
     int TM[16];
     for (int i = 0; i < 16; i++) TM[i] = 0;
