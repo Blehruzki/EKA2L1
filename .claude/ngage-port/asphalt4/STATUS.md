@@ -127,7 +127,7 @@ check build comparing against the game's own result where possible), log it, upd
 | the painter's rows (A4_PAINTFWD) | done, bench | the 2D phase -0.5 to -0.7 ms on every map (model) | exact: 174,914 calls against the game's painter, 0 px |
 | New York's snow (A4_SNOWFAST) | done, bench | New York's 2D phase -0.9 to -1.1 ms with the above (model) | exact: 193 renders against the game's +286A4, 0 flake bytes, 0 px; 63% of flake pieces skipped (clipped) |
 | the blur two pixels at once (A4_BLURFAST2) | dropped | none on the model | exact, but the blur is memory-bound |
-| **r91a (C92 = C91 + A4_CARANIM, A4_M1LIVE, A4_PAINTFWD, A4_SNOWFAST)** | battery passed, not sent (sha256 a9006828e0088011..., 1,015,124 bytes) | Instant Play 2,446 frames in 300 s (r90b's battery 2,379); renders about even, New York ~0.5 ms better; the reflection ~0.4 ms a render on the model | the next phone round: the tyres, the reflection's cost and look, New York's 2D phase |
+| **r91a (C92 = C91 + A4_CARANIM, A4_M1LIVE, A4_PAINTFWD, A4_SNOWFAST)** | **sent** (round 88; sha256 a9006828e0088011..., 1,015,124 bytes) | Instant Play 2,446 frames in 300 s (r90b's battery 2,379); renders about even, New York ~0.5 ms better; the reflection ~0.4 ms a render on the model | the next phone round: the tyres, the reflection's cost and look, New York's 2D phase |
 
 ## Versions kept (the owner, round 88: "keep track of this version and the redesign one ... I don't want to lose this one")
 

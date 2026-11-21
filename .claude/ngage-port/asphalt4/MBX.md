@@ -14507,3 +14507,7 @@ c. State the bench did not enter: the pace at 2 or 8 (bench: 1 and 4); two big m
    once (entries noted 6 a session, one at a time); A4_CARANIM's re-bake path (a mesh baked in a render +1B084 skipped)
    -- its counter is not in the telemetry; a car change between races is (atca, six maps: 0 of 15,496 takes
    differing). Entered: every map, Montmartre, marks, boosts, New York's snow throughout.
+- **r91a sent** (the owner: "yes"): a4_r91a_cand.exe, unbaked, sha256 a9006828e00880117e141a95acb0e6eb7938c09de5fca9718ed16cb79a3a861a,
+  1,015,124 bytes. The owner bakes it. What the round reads: the tyres (spinning?), the reflection (its look; its cost:
+  frec3.py timers "the reflection", TIM2 [40..48], and the pace it settled at), New York's 2D phase (FRC4), Paris's
+  hitches (m1_rebakes 0 expected).
