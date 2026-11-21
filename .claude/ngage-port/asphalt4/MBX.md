@@ -14652,3 +14652,8 @@ c. State the bench did not enter: a player car whose paint is not big or not on 
    a sky image not a power of two wide (no mapping: the hold, then no reflection; every panorama here is); a half sky
    whose upload fails (no GL error check -- a blank sky texture would add nothing); the MBX's texture memory: the paint
    now RGBA8888 (twice its 565 size) and the half sky 256 KB more.
+- **r91b sent** (the owner: "yes"): a4_r91b_cand.exe, unbaked, sha256
+  539751517cf14cb72afc24de48ce041d53d7a98da0bf3ba7b87cfed985590bb0, 1,021,832 bytes. The owner bakes it. What the round
+  reads: the reflection's look (sliding with the picture, no steps), the 75 ms renders r91a's refreshes made (FRC4),
+  the pass's cost (frec3.py timers: the car flush, "the reflection on the GPU"), the race start's one-time work (TIM2
+  [49]), and r91a's gains kept (LA's unboosted renders, the 2D phase).
