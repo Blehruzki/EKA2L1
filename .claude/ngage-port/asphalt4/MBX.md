@@ -14745,3 +14745,8 @@ c. State the bench did not enter: a GL error in a capture (the reflection off fo
    errs, TIM2 [41] high half); a name of 0 from glGenTextures (the same); a pause mid-race (no capture while paused:
    the first render after it draws no reflection, then it resumes); texture memory: at most three captures alive
    (96 KB) beside the paint.
+- **r91c sent** (the owner: "send"): a4_r91c_cand.exe, unbaked, sha256
+  eb1526dbf07bc0a07dd4ffaf33144d510eaa744f0edc5d751eb31a131ffa2d18, 1,020,896 bytes. The owner bakes it. What the round
+  reads: the scenery in the reflection (the owner's eye), the capture's cost (frec3.py timers, "the reflection from
+  the frame": ms a capture, TIM2 [46]), the names recycled (TIM2 [45]: the highest stays low if ordinal 47 is
+  glDeleteTextures), captures refused for a GL error (TIM2 [41] high half), and the renders against r91b's.
