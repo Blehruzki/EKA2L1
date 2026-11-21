@@ -4400,6 +4400,9 @@ static uint32_t tex_upload(uint32_t id, const uint32_t *ts, uint32_t tr, int all
                 if (M) { if (M < lo) lo = M; if (M > hi) hi = M; }
                 t16 = m1_texel(t16, M, tab);
             }
+#ifdef A4_M1TINT
+            if (map2 && t16) t16 = 0xF81Fu;          /* bench: a mode-1 bake's texels solid magenta (key kept) */
+#endif
             conv[nrow * w + x] = tr ? (uint16_t)((t16 & 0xF800) | (((t16 >> 6) & 0x1F) << 6)
                                                  | ((t16 & 0x1F) << 1) | (px16[i] ? 1u : 0u))
                                     : (uint16_t)t16;

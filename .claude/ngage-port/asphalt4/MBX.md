@@ -14750,3 +14750,13 @@ c. State the bench did not enter: a GL error in a capture (the reflection off fo
   reads: the scenery in the reflection (the owner's eye), the capture's cost (frec3.py timers, "the reflection from
   the frame": ms a capture, TIM2 [46]), the names recycled (TIM2 [45]: the highest stays low if ordinal 47 is
   glDeleteTextures), captures refused for a GL error (TIM2 [41] high half), and the renders against r91b's.
+
+### Phone round r91c (the owner: "Yes, it now shows accordingly and smoothly. I almost didn't notice any difference in framerate in LA. I did Paris and it feel smooth in montmartre. New York had a bit of improvement as well, although barely noticeable." -- and: "in Paris there are some props (bycicles) piled up in Montmartre that I remember them having some texture. Right now they look black. and I think other props in other maps look similar")
+- Upload: 8 ring captures + 4 marks (up91c/), LA, Paris, New York (four races). 9,797 scenes.
+- **The capture on the phone: 1.10-1.17 ms a render** (9,147 captures; the model said ~1.5). **Texture names 253-261
+  throughout: recycled -- ordinal 47 is glDeleteTextures on the N95** (Rule 4 a.(1) settled by measurement). Captures
+  refused 0; passes not drawn 38 in 18,176 (each race's first renders, and after the marks' pauses). Four point
+  tables, 176 ms in all (~44 ms each, at each race's start).
+- The reflection: the scenery in it, smooth (the owner's eye). Rule 3: r91c is the build to keep for the reflection.
+- **New: black props** -- Montmartre's piled bicycles, and others on other maps, black where the owner remembers a
+  texture. Not yet known when it began: the next step names the faces and the build that lost them.
