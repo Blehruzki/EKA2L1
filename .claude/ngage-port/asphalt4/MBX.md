@@ -14712,3 +14712,36 @@ Runs:
   passes 2.00 a scene, none refused after the first render.
 - C90 / C91 / C92 rebuilt: r90a's, r90b's, r91a's bytes. **r91c candidate (C93): sha256 eb1526dbf07bc0a0...,
   1,020,896 bytes** (= the tested a4_cap.exe). bat93c (the battery on it) running.
+- **bat93c on r91c (eb1526dbf07bc0a0...)**: at93c (six maps 45 s, one session, posts 1100-1123 dumped) framestat 5,639
+  (at93 on r91b 5,682), the boot fault only; one capture a render (1,351 by Monaco's marks, 1.55 ms each on the model),
+  passes 1.99 a scene, 2 not drawn a race (its first renders); texture names 214-261 after four races (recycled: the
+  pool grows only with each race's own textures); one point table a race. The posts: the rear window carries the
+  green of the trees and hills above, changing post to post (LA, 1104-1106), where r91b's showed the sky only.
+  m93c (Instant Play 300 s, modelled N95, 7 marks): framestat 2,422 (r91b 2,415 / 2,312), the boot fault only; 1,880
+  captures at 1.52 ms, names 98-107; 2 passes not drawn. pa93c (Paris 400 s, 7 marks): framestat 3,486 (r91b 3,675 /
+  3,652), the boot fault only; 2,413 captures at 1.55 ms, names 184-187; 10 passes not drawn (the first render, and the
+  first after each mark's pause). The capture is ~1.5 ms of a render on the model -- ~3% of the frames; Paris's 5% the
+  rest run variance (r91b's two Instant Play runs differed by 4%). rules.py: as before (titles.py --check alone fails,
+  the container's missing Asphalt 1 image).
+
+Rule 4, before r91c goes out:
+a. The guesses. (1) glDeleteTextures is ordinal 47 in the N95's libgles_cm: EKA2L1's dispatch table and the
+   alphabetical def put it just before glDepthFunc 48, and 48, 49, 52 and 55 work on the phone in that order -- not
+   measured on the phone. If it were another function the names would not be recycled: TIM2 [45]'s highest name
+   climbs (on the bench it stays at 69-73). (2) The phone's price of a fresh 32 KB texture every render, and of the
+   name's create and delete: by r91b's half sky (~256 KB in 11 ms, conversion included) about 1 ms; TIM2 [46] times
+   every capture. (3) That the MBX frees a texture deleted two renders after its last draw without stalling (GL's
+   deferred delete). Settled by r91b, no longer guesses: GL_EQUAL's second pass on the MBX (the owner saw it glide).
+   (4) The look against stock's: the whole previous frame's top rows (stock reads the current one as drawn up to the
+   car, so what is drawn after the car up there -- nearer cars, the sun's flare -- is in ours one render late), 4:3
+   across, rows 64-66 as row 63, the map as a plane per face.
+b. Read back: m1s_capture (the 8-pixel groups' indices against texel i = px 4i/3, checked on 200 rows; the strips --
+   40 rows, then 24 -- within the 10,240-texel readback buffer; the error check before and after; the ring: the
+   new name stored where the one from three captures back was deleted; the age in composites); m1s_will's want;
+   m1s_pass's texture matrix (12 / 65,536 x16 = px 3/4 of 256; 64 / 65,536 x16 = row / 64) and its state restore;
+   the IAT slot and the injector's ordinal under the flag (C90-C92's bytes unchanged); the model's fix (nine
+   argument words, a pixel-less glTexImage2D uncharged).
+c. State the bench did not enter: a GL error in a capture (the reflection off for the rest of the session --
+   errs, TIM2 [41] high half); a name of 0 from glGenTextures (the same); a pause mid-race (no capture while paused:
+   the first render after it draws no reflection, then it resumes); texture memory: at most three captures alive
+   (96 KB) beside the paint.
