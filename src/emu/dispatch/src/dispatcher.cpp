@@ -385,12 +385,12 @@ namespace eka2l1::dispatch {
         if (common::gpumodel::enabled()) {
             if (function_ord >= 0x1100 && function_ord < 0x1200) {
                 arm::core *cpu = sys->get_cpu();
-                std::uint32_t args[8];
+                std::uint32_t args[9];                // glTex(Sub)Image2D's pixels are the ninth
                 for (int i = 0; i < 4; i++)
                     args[i] = cpu->get_reg(i);
                 kernel::process *pr = sys->get_kernel_system()->crr_process();
                 const std::uint32_t sp = cpu->get_sp();
-                for (int i = 0; i < 4; i++) {
+                for (int i = 0; i < 5; i++) {
                     const std::uint32_t *w = pr ? reinterpret_cast<const std::uint32_t *>(pr->get_ptr_on_addr_space(sp + i * 4)) : nullptr;
                     args[4 + i] = w ? *w : 0;
                 }

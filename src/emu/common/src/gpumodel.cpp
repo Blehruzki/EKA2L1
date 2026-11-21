@@ -303,9 +303,11 @@ namespace eka2l1::common::gpumodel {
             g_n.us_other += p.bind_us;
             g_n.binds++;
             break;
-        case 0x117C:                                  // glTexImage2D(target, level, ifmt, w, h, border, format, type, ...)
-        case 0x117F: {                                // glTexSubImage2D(target, level, x, y, w, h, format, type, ...)
-            const double bytes = ordinal == 0x117C ? static_cast<double>(a[3]) * a[4] * bytes_per_pixel(a[6], a[7])
+        case 0x117C:                                  // glTexImage2D(target, level, ifmt, w, h, border, format, type, pixels)
+        case 0x117F: {                                // glTexSubImage2D(target, level, x, y, w, h, format, type, pixels)
+            // a glTexImage2D without pixels only allocates: no bytes uploaded (Asphalt 4 round 88: a texture made
+            // with no pixels and filled by sub-images was charged twice)
+            const double bytes = ordinal == 0x117C ? (a[8] ? static_cast<double>(a[3]) * a[4] * bytes_per_pixel(a[6], a[7]) : 0.0)
                                                    : static_cast<double>(a[4]) * a[5] * bytes_per_pixel(a[6], a[7]);
             const double t = bytes * p.texture_ns_per_byte / 1000.0;
             us += t;
