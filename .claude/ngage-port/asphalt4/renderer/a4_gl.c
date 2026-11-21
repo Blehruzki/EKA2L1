@@ -816,6 +816,11 @@ __attribute__((noinline)) static uint32_t gl_cnt(uint32_t i)   /* out of line: o
     return i;
 }
 #define F(i) (a4_gl_iat_ptr()[gl_cnt(i)])
+#ifdef A4_DARKCEN
+#define DARKPATH(n) (tim2()[58] = (n))     /* bench (the black props): which path resolves the texture next */
+#else
+#define DARKPATH(n) ((void)0)
+#endif
 #define TIM2_SNAP(v) uint32_t v[4]; { volatile uint32_t *T_ = tim2(); for (uint32_t q_ = 0; q_ < 4u; q_++) v[q_] = T_[1u + q_]; }
 #define TIM2_ADD(v, b) { volatile uint32_t *T_ = tim2(); for (uint32_t q_ = 0; q_ < 4u; q_++) T_[(b) + q_] += T_[1u + q_] - v[q_]; }
 #define TIM2_CORNERS(c) (tim2()[5] += (uint32_t)(c))
@@ -4737,9 +4742,9 @@ static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t 
         }
         if (op && dk * 2u > op) {
             volatile uint32_t *C = crk_get(), *T = tim2();
-            const uint32_t rec[8] = { C[40] + 1u, (uint32_t)(uintptr_t)ts, w | h << 16, (uint32_t)var | (nm << 8),
+            const uint32_t rec[8] = { C[40] + 1u, (uint32_t)(uintptr_t)ts, w | h << 16, (uint32_t)var | (T[58] & 15u) << 4 | (nm << 8),
                                       (uint32_t)(uintptr_t)m1tab, m0 | q0 << 16, op, dk };
-            for (uint32_t q = 1; q < 8u; q++) { C[40u + q] = rec[q]; if (!T[51]) {} }
+            for (uint32_t q = 1; q < 8u; q++) C[40u + q] = rec[q];
             if (!T[51]) for (uint32_t q = 1; q < 8u; q++) T[50u + q] = rec[q];
             C[40]++; T[50] = C[40];
         }
@@ -5300,6 +5305,7 @@ static PROF_NI int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint3
      * desc's corners and texture words; desc still gives the class, the texture and the face's record */
     int wsh, hsh;
     int mv = m1 && kind != KIND_ALPHA;
+    DARKPATH(1u);
     int ti = tri_tex(s, kind, m1, tsaddr, mv ? (const uint16_t *)gctx[0x5c / 4] : 0, mv ? m1_table(gctx) : 0,
                      idp, &wsh, &hsh);
     if (ti == -1) return 0;
@@ -7051,6 +7057,7 @@ static void gobj_flush(volatile struct glr *s, uint32_t *gctx)
     for (uint32_t e = 0; e < ne; ) {
         const uint32_t ts = key[e];
         uint32_t id; int wsh, hsh;
+        DARKPATH(2u);
         const int ok = tri_tex(s, KIND_TEX, 0, ts, m1map, m1tab, &id, &wsh, &hsh) >= 0;
         if (ok) {
             if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
@@ -7938,10 +7945,13 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
             uint32_t id; int wsh, hsh;
 #ifdef A4_CARPROBE
             crk_get()[45]++;
+            DARKPATH(3u);
             if (tri_tex(s, KIND_TEX, GC_M1(me, k), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) { crk_get()[44]++; continue; }
 #elif defined(A4_M1SKY)
+            DARKPATH(3u);
             if (tri_tex(s, KIND_TEX, M1S_VAR(me, k, skyd), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
 #else
+            DARKPATH(3u);
             if (tri_tex(s, KIND_TEX, GC_M1(me, k), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
 #endif
             if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
@@ -8234,6 +8244,7 @@ static void cvr_redraw(volatile struct glr *s)
             const uint32_t dxx = (uint32_t)it->d[0], dyy = (uint32_t)it->d[1] << 16, dzz = (uint32_t)it->d[2];
             for (uint32_t k = 0; k < me->ng; k++) {
                 uint32_t id; int wsh, hsh;
+                DARKPATH(4u);
                 if (tri_tex(s, KIND_TEX, 0, GO32(it->textab + 4u * me->gt[k]), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
                 if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
                 if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
@@ -8273,8 +8284,10 @@ static void cvr_redraw(volatile struct glr *s)
             for (uint32_t k = 0; k < me->ng; k++) {
                 uint32_t id; int wsh, hsh;
 #ifdef A4_M1SKY
+                DARKPATH(5u);
                 if (tri_tex(s, KIND_TEX, M1S_VAR(me, k, skyd), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
 #else
+                DARKPATH(5u);
                 if (tri_tex(s, KIND_TEX, GC_M1(me, k), GC_GD(me, k), m1map, m1tab, &id, &wsh, &hsh) < 0) continue;
 #endif
                 if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
@@ -9015,6 +9028,7 @@ static void mesh_draw(volatile struct glr *s, uint32_t *gctx)
         if (w != lastw) {
             uint32_t id; int wsh, hsh;
             lastw = w; lastk = 0xFFu;
+            DARKPATH(6u);
             if (tri_tex(s, KIND_TEX, (int)(w & 1u), w & ~3u, m1map, m1tab, &id, &wsh, &hsh) >= 0) {
                 uint32_t k = 0;
                 while (k < nk && kid[k] != id) k++;
@@ -10093,6 +10107,7 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         uint32_t tw = ts[1] + 1, th = ts[2] + 1;
         wsh = tw ? 31 - __builtin_clz(tw) : 0;      /* floor(log2), as the shift loops it replaces */
         hsh = th ? 31 - __builtin_clz(th) : 0;
+        DARKPATH(7u);
         int ti = tex_index(s, tsaddr, m1 && kind != KIND_ALPHA ? (const uint16_t *)gctx[0x5c / 4] : 0,
                            m1 && kind != KIND_ALPHA ? m1_table(gctx) : 0, kind == KIND_ALPHA ? 2 : m1);
         if (ti < 0) return 0;
@@ -10871,6 +10886,7 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
     const uint32_t *ctx = (const uint32_t *)f[0x6c / 4];
     if (ctx[0x4c / 4] != *(volatile uint32_t *)A4_GL_BB || f[0x64 / 4] != (uint32_t)VP_W
         || x0 >= x1 || y0 >= y1) { A4_PERF[PF_BBSW]++; return 0; }  /* not into this frame's 3D */
+    DARKPATH(8u);
     int ti = (mode == 0u || mode == 2u || mode == 3u) ? bb_tex(s, spr) : -1;
     if (ti < 0) {
         /* Drawn by software into the 3D surface (mode 1, the stipple, or a texture the
