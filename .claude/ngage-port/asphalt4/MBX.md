@@ -14594,8 +14594,8 @@ Runs (bench, C93 = C91 + A4_CARANIM + A4_M1SKY + A4_PAINTFWD + A4_SNOWFAST):
   1,021,728 bytes. bat93 (six maps with a frame dump, Instant Play 300 s with 7 marks on the model, Paris 400 s) running.
 - **bat93 on r91b (d81b9527...)**: at93 (six maps 45 s, one session, posts 1100-1123 dumped) framestat 5,694 (at91b
   5,712), the boot fault only. **Passes on an earlier frame's mapping 0 on every map**; one point table and one half
-  sky a race (TIM2 [42], [44] 1..6); 56 faces drawn again (10 flat) each race. TIM2 [49] (unmodelled bench, host-speed
-  ticks): a half sky ~22 ticks, a point table ~77 (each race). LA's posts 1100-1107 cropped: the rear window's
+  sky a race (TIM2 [42], [44] 1..6); 56 faces drawn again (10 flat) each race. TIM2 [49] (on the model, as
+  every alltracks.sh run -- hclive.sh sets it): a half sky ~22 ticks, a point table ~77 (each race). LA's posts 1100-1107 cropped: the rear window's
   reflection changes every post, the car as at msla3.
 - m93 (Instant Play 300 s on the modelled N95, 7 marks): framestat **2,415** (m91b 2,446; m90b 2,379), the boot fault
   only; 1.92 passes a scene, 0 on an earlier mapping; **one point table (72 ms on the model) and one half sky (23 ms)
@@ -14657,3 +14657,58 @@ c. State the bench did not enter: a player car whose paint is not big or not on 
   reads: the reflection's look (sliding with the picture, no steps), the 75 ms renders r91a's refreshes made (FRC4),
   the pass's cost (frec3.py timers: the car flush, "the reflection on the GPU"), the race start's one-time work (TIM2
   [49]), and r91a's gains kept (LA's unboosted renders, the 2D phase).
+
+### Phone round r91b (the owner: "the reflect now glides through the window smoothly. However, it's just reflecting one specific texture, instead of updating as it passes through trees, buildings and other sceneries")
+- Upload: 4 ring captures + 1 mark (up91b/). FRC4 on 997 renders (the race's first two, 216 and 199 ms, among them).
+- **The reflection**: 1.72-2.00 second passes a scene, **0 on an earlier mapping, 0 not drawn**; one point table
+  (**49 ms**, 136 faces drawn again, 32 flat: another car than the bench's Veyron) and one half sky (**11 ms**: 256 KB
+  in 13 uploads, the conversion included) for the race. The car flush 3.02 ms a scene (r91a 2.46): **the pass ~0.5 ms
+  a scene on the phone**.
+- **Against r91a's LA**: under 60 ms 76% (75%), 60-75 ms 20% (20%), 75 ms or more 4.0% (4.4%); renders under 60 ms
+  48.4 ms (47.1); unboosted 51.3 (49.7), the 2D phase 2.71 (2.39); boosted 23% (17%), 60.0 ms (65.3). The 40 renders of
+  75 ms or more are not the reflection: the race's first two (the one-time work), the rest boosted (the 2D phase 10.6
+  ms against 3.5) in heavier scenes (220 draws against 147, the 3D 31.8 ms against 16.6). r91a's slow renders had
+  "the rest" at 37.0 ms (its refreshes); r91b's 23.5.
+- **An upload is cheap into a fresh texture**: the half sky's 13 calls and 256 KB in 11 ms, where r91a's rewrites of
+  the paint -- a texture already drawn with -- cost 2.3 ms a call (and r90b's re-bakes of it, glTexImage2D then strips,
+  ~30 ms). So the cost is in rewriting a texture the GPU has used, not in the upload itself.
+- The owner's ask: stock reflects the screen's top 67 rows as drawn -- trees, buildings, the scenery passing -- and
+  r91b reflects the panorama only (Rule 4 a.(5) named it). Next: the reflection from the frame itself, through fresh
+  textures.
+
+### The reflection from the frame itself (A4_M1SKY, second form)
+Stock adds a quarter of the screen's top 67 rows as drawn; r91b added the panorama. The phone priced uploads into a
+fresh texture cheaply (r91b's half sky), so the second pass now reads the frame:
+- **m1s_capture**, after each composite (the complete picture -- the GPU's frame and the game's software parts -- and
+  before the 2D phase, so no HUD): rows 0-63 at twice their quarter, point-sampled 4:3 across (texel i from px 4i/3,
+  texels 240-255 the last column) into a 256 x 64 RGB565 texture **under a fresh name** each render
+  (glGenTextures, glTexImage2D without pixels, two strips of glTexSubImage2D: r91b's measured pattern); the name from
+  three captures back deleted -- **glDeleteTextures imported for this, ordinal 47** (a4_gl.s IAT [46] and the
+  injector's list, with the flag only: C90-C92 unchanged). 47: EKA2L1's table (dispatch 0x112E, its ROM patch by
+  ordinal) and the alphabetical def's slot before glDepthFunc 48 -- 48, 49, 52 and 55 work on the phone in that order.
+- **The pass** samples the capture at each corner's screen point straight (the texture matrix 12 across, 64 down:
+  x16 * 3 / 16384, y16 / 1024) -- the sky's mapping, its observer and the half sky gone. A capture may be one composite
+  old (counted in composites: s->frames counts the game's logic frames, three a render on the 3x engine -- the first
+  build refused every pass on it, capla: 574 of 574); none (the race's first render) draws no reflection.
+- The halving two pixels a word: ((r >> 2) << 12) | ((g >> 2) << 6) | ((b >> 2) << 1) is (v >> 1) & 0x73CE per pixel
+  (checked for all 65,536), so each 8 pixels give 6 texels in 4 loads and 3 stores (checked against the plain loop on
+  200 random rows).
+- TIM2 [41] passes not drawn | captures refused for a GL error << 16, [44] captures, [45] the last texture name | the
+  highest << 16 (the deletes work if it stays low), [46] ticks capturing; frec3.py timers: "the reflection from the
+  frame". Bench: -DA4_M1SKYMUT (the capture all white, then all black, a render each).
+
+Runs:
+- capla (LA, the first build): 287 captures, texture names 67-69 (recycled: the deletes work), **0 passes drawn** --
+  capcen (+ A4_M1SKYCEN, the last refusal's numbers): the pass's frame 2837, the capture's 2834: three logic frames a
+  render. Fixed as above; capcen again: 386 passes drawn, 2 not (the race's first render), names 61-68, the fit's
+  census unchanged (17,610 px over 6,308 texels).
+- **capmut (+ A4_M1SKYMUT, LA, no marks)**: the rear window's brightness flips every post -- 951:121 952:97 953:121
+  954:103 ... 966:65 967:97 968:65 ... -- each render's pass reads the capture of the render before. (A stripe
+  version first: the window followed the stripes' 16-render period, blurred by the car's own motion.)
+- The cost on the model: 3.0 ms a capture (capla), 2.5 with the packed loop -- **and the model charged glTexImage2D
+  for the bytes of a texture made without pixels** (the dispatcher passed it 8 argument words, the pixels are the 9th):
+  every fresh texture paid twice. Fixed in the emulator (common/src/gpumodel.cpp, dispatch/src/dispatcher.cpp:
+  EMU_PATCHES.md). capla again: **1.57-1.66 ms a capture** (32 KB at the model's 30 ns a byte, the loop, ~10 calls);
+  passes 2.00 a scene, none refused after the first render.
+- C90 / C91 / C92 rebuilt: r90a's, r90b's, r91a's bytes. **r91c candidate (C93): sha256 eb1526dbf07bc0a0...,
+  1,020,896 bytes** (= the tested a4_cap.exe). bat93c (the battery on it) running.

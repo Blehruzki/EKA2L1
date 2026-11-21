@@ -717,7 +717,9 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         v = u32(out, field)
         if v: struct.pack_into('<I', out, field, v + grow)
     if gl:
-        out = add_gl_import(out, syms['a4_gl_iat'] - LINK_BASE)
+        # round 88, after r91b (A4_M1SKY): glDeleteTextures appended at a4_gl.s [46], with the flag only (C90-C92 unchanged)
+        m1sky = '-DA4_M1SKY' in os.environ.get('A4_EXTRA_CFLAGS', '').split()
+        out = add_gl_import(out, syms['a4_gl_iat'] - LINK_BASE, ordinals=GL_IMPORT_ORDINALS + ([47] if m1sky else []))
         if 'a4_ws_iat' in syms:
             out = add_gl_import(out, syms['a4_ws_iat'] - LINK_BASE, WS_IMPORT_DLL, WS_IMPORT_ORDINALS)
         if 'a4_cone_iat' in syms:

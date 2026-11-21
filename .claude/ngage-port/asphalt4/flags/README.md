@@ -104,3 +104,7 @@ cost the phone 18 ms a refresh). Same scratch (`A4_SCRATCH_SIZE=0x1C3000`). r91b
 1,021,728 bytes; C90 / C91 / C92 rebuilt from the same tree give r90a's, r90b's and r91a's bytes. Bench only:
 `-DA4_M1SKYCEN` (TIM2 [48], [50..59]: the faces against the game's map, why the half sky is made again, the
 registrations, how each frame's mapping went).
+After r91b's round A4_M1SKY reads the frame itself (each composite's top rows into a fresh texture) and imports
+glDeleteTextures (ordinal 47) with the flag: C93 now builds the r91c candidate, sha256 eb1526dbf07bc0a0..., 1,020,896
+bytes (r91b was 539751517cf14cb7... from commit 78e4dc3). Bench only: `-DA4_M1SKYCEN`, `-DA4_M1SKYMUT` (the capture all
+white, then all black, a render each).

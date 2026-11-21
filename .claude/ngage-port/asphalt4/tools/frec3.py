@@ -157,7 +157,15 @@ if mode == 'timers':
                   'the batch flushed inside the shadow\'s draws %.2f ms a scene (%.2f flushes a scene)'
                   % ((b[12] - a[12]) / max(dp, 1), dp, dp / dn, (b[14] - a[14]) / max(dv, 1), (b[18] - a[18]) / max(dz, 1),
                      (b[16] - a[16]) / dn, (b[17] - a[17]) / dn))
-        if b[64] == 0x324D4954 and b[64 + 46] >> 16 and not b[64 + 48]:   # round 88 (A4_M1SKY, r91b): the GPU's pass
+        m1v1 = (b[110] & 0xFFFF) in (256, 512) and (b[110] >> 16) in (128, 192, 256)   # r91b's [46]: the half sky's image
+        if b[64] == 0x324D4954 and not b[64 + 48] and b[108] and not m1v1:   # round 88, after r91b: the capture's pass
+            dr = b[104] - a[104]; dc = b[108] - a[108]   # TIM2 [40..49]; [48] is A4_M1LIVE's pace, never 0 there
+            print('    the reflection from the frame: %d second passes (%.2f a scene), %d not drawn (no recent capture), '
+                  'captures refused %d; %d captures (%.2f ms each; texture names last %d, highest %d); %d point tables '
+                  'made (%d ms in all), faces drawn again %d (%d fitted flat); paints made %d'
+                  % (dr, dr / dn, (b[105] & 0xFFFF) - (a[105] & 0xFFFF), b[105] >> 16, dc, (b[110] - a[110]) / max(dc, 1),
+                     b[109] & 0xFFFF, b[109] >> 16, b[106], b[113] >> 16, b[107] & 0xFFFF, b[107] >> 16, b[111]))
+        elif b[64] == 0x324D4954 and b[64 + 46] >> 16 and not b[64 + 48]:   # round 88 (A4_M1SKY, r91b): the GPU's pass
             dr = b[104] - a[104]                    # TIM2 [40..47]; [48] is A4_M1LIVE's pace, never 0 there
             print('    the reflection on the GPU: %d second passes (%.2f a scene), %d on an earlier frame\'s mapping, %d not '
                   'drawn (no sky lately); '

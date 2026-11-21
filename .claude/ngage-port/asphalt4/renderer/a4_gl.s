@@ -62,6 +62,10 @@ a4_gl_iat:
         .word   133     @ [44] eglSwapInterval    (round 56; on the RM-320 ROM a forwarder to libimgegl 32,
                         @      the last of EGL 1.1's four -- 173-175 go to 29-31 -- taking two arguments)
         .word   9       @ [45] eglGetConfigAttrib (ROM: libimgegl 9; 1-25 map one to one)
+#ifdef A4_M1SKY
+        .word   47      @ [46] glDeleteTextures (round 88, after r91b: the reflection's captures; the alphabetical
+                        @      def's slot before glDepthFunc 48, as 48/49/52/55 are on the phone)
+#endif
         .global a4_gl_iat_end
 a4_gl_iat_end:
 
