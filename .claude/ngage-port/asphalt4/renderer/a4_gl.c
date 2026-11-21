@@ -6886,6 +6886,17 @@ int a4_obj_take(uint32_t obj, uint32_t ctx, uint32_t textab, uint32_t r3)
 #ifdef A4_GOBJNG
     g->ngsum += me->ng;
 #endif
+#ifdef A4_OBJMODECEN
+    {   /* bench (round 88, the black props): the objects taken by the class word their mesh mode ([ctx], +CE8C's call
+         * of +349F8) gives -- CRK1 [40..47] four (class, objects taken) pairs, the first four classes met */
+        extern const int32_t a4_hc_25e8;
+        const uint32_t gb_ = (uint32_t)(uintptr_t)&a4_hc_25e8 + (uint32_t)a4_hc_25e8 - (0x25E8u | 1u);
+        const uint32_t md_ = GO32(ctx), w1_ = md_ <= 7u ? GO32(GO32(gb_ + 0x34DD4u) + 8u * md_ + 4u) : 0xFFFF0000u | md_;
+        volatile uint32_t *C = crk_get();
+        for (uint32_t q = 0; q < 4u; q++)
+            if (C[40u + 2u * q] == w1_ || !C[41u + 2u * q]) { C[40u + 2u * q] = w1_; C[41u + 2u * q]++; break; }
+    }
+#endif
     g->taken++;
     return 1;
 }
