@@ -14592,3 +14592,8 @@ Runs (bench, C93 = C91 + A4_CARANIM + A4_M1SKY + A4_PAINTFWD + A4_SNOWFAST):
 - **C90 / C91 / C92 rebuilt from this tree: r90a's 6ebb8ba6..., r90b's 93391d95..., r91a's a9006828... -- unchanged.**
   C93 (r91b candidate): a4_r91b_cand.exe sha256 d81b952798606cc4a813ec302ec10d0b93deef630a8c99b3dff10701e73334cf,
   1,021,728 bytes. bat93 (six maps with a frame dump, Instant Play 300 s with 7 marks on the model, Paris 400 s) running.
+- **bat93 on r91b (d81b9527...)**: at93 (six maps 45 s, one session, posts 1100-1123 dumped) framestat 5,694 (at91b
+  5,712), the boot fault only. **Passes on an earlier frame's mapping 0 on every map**; one point table and one half
+  sky a race (TIM2 [42], [44] 1..6); 56 faces drawn again (10 flat) each race. TIM2 [49] (unmodelled bench, host-speed
+  ticks): a half sky ~22 ticks, a point table ~77 (each race). LA's posts 1100-1107 cropped: the rear window's
+  reflection changes every post, the car as at msla3.
