@@ -14785,3 +14785,12 @@ c. State the bench did not enter: a GL error in a capture (the reflection off fo
   quarter (T + table[M]/4). Something draws these faces with the base alone (plain, or a bake whose table entries
   are black). dkpa (+ A4_DARKCEN, new: each texture made whose opaque texels are mostly 0x0001 -- its descriptor,
   size, variant, texels with a map value, the table given and the first such texel's table entry) asks which.
+- dkpa (A4_DARKCEN, Paris 400 s): three textures made mostly of 0x0001, all plain (var 0), no map values: 0x2046c28
+  64x64 (2,730 of 4,096 texels 0x0001), 0x236a8e8 64x64 (2,307 of 4,096), and **0x243f370 128x64 -- all 2,715 of its
+  opaque texels 0x0001, a silhouette**. dkpa again with the texture sites tagged (DARKPATH): **the silhouette is made by
+  the GPU objects (gobj_flush)** -- a scenery object +CE8C took whole; the 64x64 ones by the list's site and the objects.
+- +CE8C's own face loop (+CEEC..+CF48, read): each face's descriptor is [sp+0x1C][face byte 3] -- +CE8C's r2, the same
+  textab the GPU's take reads. So the GPU draws the descriptor the game would. Either the game draws that object as
+  black too and the bicycles' colour is a second layer the GPU path loses (a later draw at the same place hidden
+  behind the silhouette's depth, say), or the game does something else with it. The game's own picture of the place
+  says which: stockpa (the handoff baseline, the game's software renderer, Paris 900 s, every post dumped).
