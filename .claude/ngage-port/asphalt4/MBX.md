@@ -14794,3 +14794,39 @@ c. State the bench did not enter: a GL error in a capture (the reflection off fo
   black too and the bicycles' colour is a second layer the GPU path loses (a later draw at the same place hidden
   behind the silhouette's depth, say), or the game does something else with it. The game's own picture of the place
   says which: stockpa (the handoff baseline, the game's software renderer, Paris 900 s, every post dumped).
+- stockpa (the handoff baseline, unmodified, Paris 900 s, every post dumped): lap 1's Montmartre jump (posts 1932,
+  1935) passes the pile -- **the stock game draws the bicycles black too**: 528 pixels of exactly 0x000008 in the
+  pile's box at 1935, the same silhouette as r91c's (posts 3058-3062). Round 60's reading (r59 and stock on the bench,
+  stfr f0037-f0038) stands. So the black is in what the game is given, not in how this port draws it.
+- wpa (a4_dark.exe, EKA2L1_WATCHPTR on the silhouette's pixel pointer, desc 0x243f370 + 0x10, WATCHONCE): the pointer is
+  stored by +362E8 and the texels written by +36574 -- **the game's texture loader +362EC** (75 call sites: textures\*,
+  cars, tracks). Read: a 12-byte header (type & 0x3F: 0 = 4-bit, 1 = 4-bit index + run, 2 = 6-bit index + 2-bit run, 3 =
+  8-bit; width; height; a fourth halfword the loader never reads; the data size), then the palette (16/16/64/256
+  entries), optionally replaced by a palette file (the 4th argument; its first byte the count, 0 = 256), then each
+  entry converted: 0xFF0F -> 0 (the colour key), else R4G4B4 with three extra low bits in the top nibble -> 565, and a
+  result of 0 made 0x0001 so black stays opaque. **0x0001 is a palette entry that is pure black in the file.**
+- tlpa / tlpb (EKA2L1_PCMEM at +362EC: the descriptor, the file name and the palette file's; at +36400 the palette as
+  read and the header; at +364A2 the index data): the silhouette is **tracks\track02\2149_bicycle.rle**, type 3,
+  128x64, no palette file (none exists for it: tracksc.bar lists 2120/2121/2122/2126/... .pal0.p, no 2149). Its
+  palette: entries 0-254 all 0x0000, entry 255 0xFF0F; its 8,192 indices: 5,477 of 255 (transparent) and 2,715 of 254
+  (black). **A one-colour black silhouette, as shipped.**
+- Checked without the emulator: the .bar format read (u32 directory size, u32 data size, then name\0 + a big-endian
+  word, bit 31 = compressed, the rest the offset after the directory; a compressed entry is a big-endian size then a
+  zlib stream). 2149_bicycle.rle inflated from tracksc.bar by Python's zlib: 8,716 bytes, the same header, the same
+  palette, and indices byte-identical to tlpb's dump. The game's own archive reader (in the image, +265F0..+26A22)
+  gives what the file holds; nothing platform-dependent between the file and the texels.
+- All 1,087 .rle textures in the eleven archives scanned the same way: **only two have their opaque texels pure
+  black -- Cars\black.RLE (8x8, black by name) and 2149_bicycle.rle.** Monaco's tyres (Tracks\TRACK03\3115_pneu.rle,
+  round 60's "pneumatics") are a real texture: 76 colours, a dark-grey tread (3,142 of 3,570 opaque texels at 3/45 of
+  full brightness or less) -- near-black by design, drawn texel for texel by the same path. The header's fourth
+  halfword is not an average colour (0x13 on 340 textures, 0xD3 on 310, 0x7FFF on 24 including 2188_store and
+  2121/2122_building), so it says nothing about an intended colour for the bicycle.
+- **Verdict: not a port fault, and not an emulator one.** The pile is a black silhouette in the game's own data; the
+  original draws it black on any phone (the loader, the archive reader and the software rasterizer are the game's).
+  Nothing to fix exactly. Giving the bicycles a colour would be new art, a departure from the original -- offered to
+  the owner, not done. The bench flags of this hunt (A4_OBJMODECEN, A4_F40CEN, A4_DARKCEN with DARKPATH) stay, off;
+  C90 / C91 / C92 / C93 rebuild to r90a's, r90b's, r91a's and r91c's bytes (6ebb8ba6..., 93391d95..., a9006828...,
+  eb1526db...).
+- tools/bar.py (new): the .bar reader -- `ls`, `get <name> <out>`, `png <name> <out.png>` (a texture through the
+  loader's palette conversion, the key magenta), `dark` (textures whose opaque texels are 90% or more pure black). Its
+  `dark` over the eleven archives gives the same two as the scan above.
