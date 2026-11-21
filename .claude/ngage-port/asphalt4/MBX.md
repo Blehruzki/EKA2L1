@@ -14776,3 +14776,12 @@ c. State the bench did not enter: a GL error in a capture (the reflection off fo
   +2E910), which the GPU objects refuse and draw_prim_take leaves to software ("0x10/0x40: none in a race", round 10 --
   LA's census). f40pa (+ A4_F40CEN, new: CRK1 [40..45] the 0x40 and 0x10 calls, the last descriptor, its +0x28 byte
   and size) asks whether Paris has them.
+- f40pa (Paris 400 s, the census): **0 calls of class 0x40 or 0x10** in the race. Suspect 2 out. (+2E910's span +33DD4,
+  read: a colour-keyed constant-alpha blend, dst + (T - dst) * (desc[+0x28] >> 4) / 16.)
+- **The bicycles found**: pf91c (r91c, Paris 400 s with the battery's marks, posts 600-3599 dumped, 0.9 GB) -- posts
+  3056-3062 show the pile in the middle of the road's left side, black. **Their pixels are exactly 0x000008** (1,238
+  of the region's 3,330; nothing else that dark): the 565 texel 0x0001 drawn as it is -- the darkest non-zero texel,
+  kept by the colour key. The speed signs' signature (round 10): a near-black base whose colour is the mode-1 table's
+  quarter (T + table[M]/4). Something draws these faces with the base alone (plain, or a bake whose table entries
+  are black). dkpa (+ A4_DARKCEN, new: each texture made whose opaque texels are mostly 0x0001 -- its descriptor,
+  size, variant, texels with a map value, the table given and the first such texel's table entry) asks which.

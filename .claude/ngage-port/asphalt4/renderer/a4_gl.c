@@ -4721,6 +4721,30 @@ static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t 
      * alpha test passes and they are unaffected. */
     uint32_t tr = 0;
     for (uint32_t k = 0; k < total; k++) if (px16[k] == 0) { tr = 1; break; }
+#ifdef A4_DARKCEN
+    {   /* bench (round 88, the black props: their pixels 0x000008, the 565 texel 0x0001): a texture made whose opaque
+         * texels are mostly 0x0001 -- CRK1 [40] such makes, [41] the last one's descriptor, [42] w | h << 16, [43] var |
+         * its texels with a map value (m1map set) << 8, [44] the table pointer given, [45] the first such texel's M |
+         * tab[M] << 16, [46] opaque texels, [47] 0x0001 texels; TIM2 [50..57] the same for the first one */
+        uint32_t op = 0, dk = 0, nm = 0, m0 = 0, q0 = 0;
+        for (uint32_t k = 0; k < total; k++) {
+            const uint32_t t = px16[k];
+            if (!t) continue;
+            op++;
+            if (t == 1u) dk++;
+            const uint32_t M = m1map ? m1map[k] : 0u;
+            if (M) { nm++; if (!m0 && t == 1u) { m0 = M; q0 = m1tab ? m1tab[M] : 0xFFFFu; } }
+        }
+        if (op && dk * 2u > op) {
+            volatile uint32_t *C = crk_get(), *T = tim2();
+            const uint32_t rec[8] = { C[40] + 1u, (uint32_t)(uintptr_t)ts, w | h << 16, (uint32_t)var | (nm << 8),
+                                      (uint32_t)(uintptr_t)m1tab, m0 | q0 << 16, op, dk };
+            for (uint32_t q = 1; q < 8u; q++) { C[40u + q] = rec[q]; if (!T[51]) {} }
+            if (!T[51]) for (uint32_t q = 1; q < 8u; q++) T[50u + q] = rec[q];
+            C[40]++; T[50] = C[40];
+        }
+    }
+#endif
     const uint16_t *map2 = 0, *tab = 0;
     if (var == 1) { map2 = m1map; tab = m1tab; }   /* ctx[0x5c] and m1_table(ctx), taken by the caller */
 #ifdef A4_M1SKY
