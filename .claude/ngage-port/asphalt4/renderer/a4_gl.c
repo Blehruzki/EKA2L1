@@ -9742,6 +9742,16 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         return 0;
 #endif
     } else if (flags & 0x150u) {
+#ifdef A4_F40CEN
+        {   /* bench (round 88, the black props): the 0x10 / 0x40 classes left to software -- CRK1 [40] calls with 0x40,
+             * [41] with 0x10, [42] the last one's texture descriptor, [43] its +0x28 byte | w << 8 | h << 20 (w, h - 1),
+             * [44] the last flags word, [45] the last span mode ctx[0x64] */
+            volatile uint32_t *C = crk_get();
+            const uint32_t d_ = desc[12];
+            C[(flags & 0x40u) ? 40 : 41]++; C[42] = d_; C[44] = flags; C[45] = gctx[0x64 / 4];
+            if (d_ && !(d_ & 3u)) C[43] = GO8(d_ + 0x28u) | (GO32(d_ + 4u) & 0xFFFu) << 8 | (GO32(d_ + 8u) & 0xFFFu) << 20;
+        }
+#endif
         return 0;                                    /* 0x10/0x40: none in a race */
     } else {
 #ifdef A4_TAKEDEF

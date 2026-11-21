@@ -14760,3 +14760,19 @@ c. State the bench did not enter: a GL error in a capture (the reflection off fo
 - The reflection: the scenery in it, smooth (the owner's eye). Rule 3: r91c is the build to keep for the reflection.
 - **New: black props** -- Montmartre's piled bicycles, and others on other maps, black where the owner remembers a
   texture. Not yet known when it began: the next step names the faces and the build that lost them.
+
+### The black props (the owner, r91c: "props (bycicles) piled up in Montmartre ... look black"; "that props texture bug comes from a looong while ago")
+- Seen on the bench: pa93c's 350 s shot shows them -- a pile of bicycles left of a crosswalk sign, **solid black
+  silhouettes with the spokes see-through**: the shape (colour key) right, the colour gone.
+- Ruled out by reading: r91c's capture (its names come from glGenTextures as the cache's do, every bind site tracks
+  its bound name locally); the billboard path (565 sprite texels, modes 0/2/3); the alpha-map path (colour kept).
+- bk91c (r91c, Paris, posts 2850-3449 dumped), tint (+ A4_OBJFLAT: GPU objects solid green; A4_M1TINT, new: mode-1
+  bakes magenta; shots every 2 s): the route differs run to run, and neither passed the bicycles in view.
+- Suspect 1, the GPU objects drawn plain whatever the game's mode: omc (+ A4_OBJMODECEN, new, six maps) read [ctx] as
+  the mesh mode -- 0x2588 for all 95,257 objects taken, not a mode. Read again: +CE8C pushes 9 words and subtracts
+  0x14, so +349F8's mode word [sp+0x40] is +CE8C's [sp+8] = 0: **every scenery object is mode 0** (class 0x4001 with
+  the descriptor's texture bits), which the GPU's plain draw is. Suspect 1 out.
+- Suspect 2: mode 0 takes texture bits from the descriptor -- +0x28 byte != 0xFF gives class |0x10040 (rasterizer
+  +2E910), which the GPU objects refuse and draw_prim_take leaves to software ("0x10/0x40: none in a race", round 10 --
+  LA's census). f40pa (+ A4_F40CEN, new: CRK1 [40..45] the 0x40 and 0x10 calls, the last descriptor, its +0x28 byte
+  and size) asks whether Paris has them.
