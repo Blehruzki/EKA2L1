@@ -14830,3 +14830,18 @@ c. State the bench did not enter: a GL error in a capture (the reflection off fo
 - tools/bar.py (new): the .bar reader -- `ls`, `get <name> <out>`, `png <name> <out.png>` (a texture through the
   loader's palette conversion, the key magenta), `dark` (textures whose opaque texels are 90% or more pure black). Its
   `dark` over the eleven archives gives the same two as the scan above.
+
+### Phone round r91c, the frame times (frec3.py phase on up91c/, not read when the round was logged)
+- The captures hold no map id. The four marks (5,813-5,908 s, one race, segments 18-80, 158-199 draws a render, the
+  2D phase ~3 ms) read as Paris's Montmartre; the eight ring captures (5,938-6,052 s, segments 0-143) are New York's
+  race by its 2D phase (median 6 ms: the snow). LA's race left no capture (the ring keeps the last eight).
+- **Paris marks** (1,016 renders): unboosted 52.0-61.2 ms by mark window (r90b's Montmartre by segment 49.1-66.6);
+  75 ms or more 0.4-2.0%.
+- **New York** (1,843 renders): under 60 ms 47% (r90b 52%), 60-75 ms 48% (46%), 75 ms or more 5.4% (1.2%); under-60
+  mean 53.7 ms (54.5); unboosted 58.5 ms with the 2D phase 6.1 (r90b 7-12: A4_SNOWFAST and A4_PAINTFWD held);
+  boosted 21%, 68.9 ms. The 100 slow renders: 56 boosted, 173 draws against 135 on average, the 3D 29.4 ms. Another
+  race and route than r90b's, so the slow share is not a like-for-like regression; nothing in it points at the
+  capture (1.1 ms a render).
+- Where the goal stands: an unboosted render 52-58 ms on the phone (~17-19 fps) against 33 ms for 30 fps. Round 88's
+  RE plan is done (STATUS.md); presenting from the GPU without the read-back was measured in rounds 55-57
+  (eglSwapBuffers ~12 ms a frame, what it would save) and closed.
