@@ -14980,3 +14980,6 @@ b. Read back: the helper and its one call; WHY() is empty without A4_CARWHY and 
 c. Not entered by the bench before: cars the sphere refused and the box takes -- the player's in reverse (rv94, the
    exact binary), opponents passing close to the camera (in at94/m94/pa94's races, no fault, frames within the
    runs' spread); the garage's car close to the camera (gar_C93 / gar_r91d: the menus' posts compared, below).
+- **r91d sent** (the owner: "send it"): a4_r91d_cand.exe, unbaked, sha256
+  d8d6da2eea769e666ec53939bf98baa7b7f82a73cea06aac58d5809d1db9e80c, 1,021,108 bytes. The owner bakes it. What the round
+  reads: the front windshield reflecting while reversing (the owner's eye), the renders against r91c's.
