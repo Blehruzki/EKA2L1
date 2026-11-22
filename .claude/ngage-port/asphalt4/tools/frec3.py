@@ -165,6 +165,11 @@ if mode == 'timers':
                   'made (%d ms in all), faces drawn again %d (%d fitted flat); paints made %d'
                   % (dr, dr / dn, (b[105] & 0xFFFF) - (a[105] & 0xFFFF), b[105] >> 16, dc, (b[110] - a[110]) / max(dc, 1),
                      b[109] & 0xFFFF, b[109] >> 16, b[106], b[113] >> 16, b[107] & 0xFFFF, b[107] >> 16, b[111]))
+            if b[101] or b[123]:                    # round 89 (A4_M1HOOK): the car the game draws itself, TIM2 [37..39] [59]
+                g = lambda k: b[64 + k] - a[64 + k]
+                print('    the game\'s own car: %d paint triangles matched to a face (%.1f a scene), %d of them reflecting, '
+                      '%d second passes (%.2f a scene); %d paint triangles matching no face (left baked)'
+                      % (g(37), g(37) / dn, g(38), g(39), g(39) / dn, g(59)))
         elif b[64] == 0x324D4954 and b[64 + 46] >> 16 and not b[64 + 48]:   # round 88 (A4_M1SKY, r91b): the GPU's pass
             dr = b[104] - a[104]                    # TIM2 [40..47]; [48] is A4_M1LIVE's pace, never 0 there
             print('    the reflection on the GPU: %d second passes (%.2f a scene), %d on an earlier frame\'s mapping, %d not '

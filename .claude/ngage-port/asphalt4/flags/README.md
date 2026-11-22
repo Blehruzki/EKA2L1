@@ -119,3 +119,14 @@ Bench only: `-DA4_BENCH_REVERSE=<step>` (`_LEN`; with A4_CARREC, A4_AUTOPILOT an
 step, the car reverses), `-DA4_CARWHY` (the player's car takes by outcome, CRK1 [40..47]), `-DA4_M1SKYFACE` (the paint's
 faces and the reflecting ones by half, CRK1 [40..47] / TIM2 [50..55]), `-DA4_M1MAPCHG` (the map's pointer and a sampled
 hash each render, CRK1 [40..45]), `-DA4_M1STINT` (the paint's reflecting texels green).
+
+C95.flags = C94.flags with `-DA4_M1HOOK` (round 89, after r91d: the owner, "It's not fixed ... It needs to work on all
+player's vehicles where applicable. I tried this time with the mini cooper"). When the camera is nearer the car than the
+GPU's near plane (the Mini's front in reverse), the game draws the car itself through the hook; its paint went from a
+var-1 bake against a table with no picture in it (flat light blue). Now a paint triangle there is matched to its face
+(a hash of the paint's faces by their texture points), drawn as var 3, and the reflecting ones drawn again after the
+batch over the last capture at the face's own points -- the GPU car's pass on the game's own triangles. Every big
+mode-1 paint of the player's mesh now takes part (a bike's second texture), not only the first. Same scratch
+(`A4_SCRATCH_SIZE=0x1C3000`); the arena gives the registration ~19 KB more (the hash, the batch's points and list).
+C90 / C91 / C92 / C93 / C94 rebuild to r90a's, r90b's, r91a's, r91c's and r91d's bytes. Telemetry: TIM2 [37] paint
+triangles matched, [38] of them reflecting, [39] second passes, [59] paint triangles matching no face (frec3.py timers).

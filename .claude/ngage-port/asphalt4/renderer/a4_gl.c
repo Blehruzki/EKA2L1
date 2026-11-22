@@ -4640,6 +4640,9 @@ static void m1l_refresh(volatile struct glr *s)
     }
 }
 #endif
+#if defined(A4_M1HOOK) && !defined(A4_M1SKY)
+#error "A4_M1HOOK extends A4_M1SKY"
+#endif
 #ifdef A4_M1SKY
 /* Round 88. The paint's reflection on the GPU. r91a's (A4_M1LIVE) rewrote the paint after each composite: 18.2 ms of
  * uploads a refresh on the phone (~2.3 ms a call into a texture already drawn with), so it stepped every 8th render
@@ -4674,8 +4677,16 @@ static void m1l_refresh(volatile struct glr *s)
 #if !defined(A4_GPUSKY) || !defined(A4_GPUCAR) || !defined(A4_CARANIM) || !defined(A4_PHTIMERS)
 #error "A4_M1SKY: the GPU's sky and cars (A4_GPUSKY, A4_GPUCAR, A4_CARANIM's bake), TIM2 (A4_PHTIMERS)"
 #endif
+#if defined(A4_M1HOOK) && (!defined(A4_LEAN) || !defined(A4_HPERSP) || !defined(A4_REORDER) || defined(A4_DEFER) || defined(A4_ATLAS))
+#error "A4_M1HOOK: the hook's lean path (A4_LEAN, A4_HPERSP, A4_REORDER; not A4_DEFER or A4_ATLAS)"
+#endif
 struct m1sky { uint32_t magic, mi, verts, ofs, scr, ready, desc, nidx;
-               uint32_t want, cur, cfr, ring[3], rix, errs, ncomp; };   /* the frame's capture (m1s_capture) */
+               uint32_t want, cur, cfr, ring[3], rix, errs, ncomp;      /* the frame's capture (m1s_capture) */
+#ifdef A4_M1HOOK
+               uint32_t np, pd[3];                  /* the mesh's paints (m1s_pd): every big mode-1 group's texture */
+               uint32_t hash, tc, hix, hn, hlast;   /* the game's own draw of the car (m1h_*): the faces' hash, the batch's */
+#endif                                              /* capture points and second-pass list, its length, its last slot */
+               };
 #define M1S ((volatile struct m1sky *)0x005C3100u)
 #define M1S_MAGIC 0x31534D31u                    /* '1MS1' */
 _Static_assert(0x005C3100u + sizeof(struct m1sky) <= 0x005C4000u, "M1SKY within A4_SCRATCH_SIZE 0x1C3000's scratch");
@@ -4685,6 +4696,9 @@ static volatile struct m1sky *m1s_get(void)
     if (S->magic != M1S_MAGIC) {
         S->mi = 0; S->ready = 0; S->want = 0xFFFFFFFFu; S->cur = 0; S->cfr = 0xFFFFFFFFu;
         S->ring[0] = S->ring[1] = S->ring[2] = 0; S->rix = 0; S->errs = 0; S->ncomp = 0;
+#ifdef A4_M1HOOK
+        S->np = 0; S->pd[0] = S->pd[1] = S->pd[2] = 0; S->hash = 0; S->hn = 0; S->hlast = 0;
+#endif
         S->magic = M1S_MAGIC;
     }
     return S;
@@ -4728,6 +4742,18 @@ static inline int m1s_paint(uint32_t d, const uint16_t *m1tab)
     return (ts[1] + 1u) * (ts[2] + 1u) >= M1_BIG && ts[1] < 256u && ts[2] < 256u
         && (uint32_t)(uintptr_t)m1tab == *(volatile uint32_t *)A4_GL_BB;
 }
+#ifdef A4_M1HOOK
+/* round 89: a paint by its size (m1s_paint less the table, which each caller checks), and is d one of the mesh's */
+static inline int m1s_big(uint32_t d)
+{
+    const uint32_t *ts = (const uint32_t *)(uintptr_t)d;
+    return (ts[1] + 1u) * (ts[2] + 1u) >= M1_BIG && ts[1] < 256u && ts[2] < 256u;
+}
+static inline int m1s_inpd(volatile struct m1sky *S, uint32_t d) { return d && (d == S->pd[0] || d == S->pd[1] || d == S->pd[2]); }
+#define M1H_BITS 11u                                /* the faces' hash: 2,048 words (face + 1 | paint << 16 | reflects << 24) */
+#define M1H_NH (1u << M1H_BITS)
+#define M1H_REC ((4u * M1H_NH + 12u * MAXT + 6u * MAXT + 11u) / 12u)   /* the arena's records for the hash and the batch's */
+#endif
 #ifndef GL_CLAMP_TO_EDGE
 #define GL_CLAMP_TO_EDGE 0x812F
 #endif
@@ -5321,15 +5347,33 @@ static void shad_sink(const uint32_t *gctx, const uint32_t *desc)
         }
 }
 #endif
+#ifdef A4_M1HOOK
+static uint32_t m1h_face(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t d);
+static void m1h_note(const void *cvp, uint32_t slot, uint32_t hf);
+#define M1H_PARM , uint32_t hslot                  /* the batch slot written (M1H_NONE: a check's own copy) */
+#define M1H_ARG(n) , (n)
+#define M1H_NONE 0xFFFFFFFFu
+#else
+#define M1H_PARM
+#define M1H_ARG(n)
+#endif
 static PROF_NI int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t kind, int m1,
-                     uint32_t tsaddr, int32_t *pos, int32_t *uv, uint32_t *idp, int16_t *box, int32_t *yr, const void *cvp)
+                     uint32_t tsaddr, int32_t *pos, int32_t *uv, uint32_t *idp, int16_t *box, int32_t *yr, const void *cvp
+                     M1H_PARM)
 {   /* cvp: round 82 -- a piece of a cut triangle (A4_CLIPG: three struct clipv, positions in 1/16 pixel) in place of
      * desc's corners and texture words; desc still gives the class, the texture and the face's record */
     int wsh, hsh;
     int mv = m1 && kind != KIND_ALPHA;
     DARKPATH(1u);
+#ifdef A4_M1HOOK
+    /* round 89: a paint face of the player's car the game draws itself -- var 3, its reflection in the second pass */
+    const uint32_t hf = mv && hslot != M1H_NONE ? m1h_face(s, gctx, desc, tsaddr) : 0u;
+    int ti = tri_tex(s, kind, hf ? 3 : m1, tsaddr, mv ? (const uint16_t *)gctx[0x5c / 4] : 0, mv ? m1_table(gctx) : 0,
+                     idp, &wsh, &hsh);
+#else
     int ti = tri_tex(s, kind, m1, tsaddr, mv ? (const uint16_t *)gctx[0x5c / 4] : 0, mv ? m1_table(gctx) : 0,
                      idp, &wsh, &hsh);
+#endif
     if (ti == -1) return 0;
     const uint32_t *v0 = (const uint32_t *)desc[3], *v1 = (const uint32_t *)desc[6], *v2 = (const uint32_t *)desc[9];
     int32_t x0 = (int16_t)(int32_t)v0[0], y0 = (int16_t)(int32_t)v0[1];
@@ -5380,6 +5424,9 @@ static PROF_NI int lean_conv(volatile struct glr *s, uint32_t *gctx, const uint3
         pos[2] = -pos[3]; pos[6] = -pos[7]; pos[10] = -pos[11];   /* window depth 1: untested */
     }
 #endif
+#endif
+#ifdef A4_M1HOOK
+    if (hf) m1h_note(cvp, hslot, hf);               /* its points and its place in the batch's second pass */
 #endif
 #ifdef A4_ATLAS
     if ((s->fmode & AB_ATLAS) && ti >= 0 && !mv && (kind == KIND_TEX || kind == KIND_TEXZ || kind == KIND_ADD)
@@ -5683,7 +5730,7 @@ static int lean_tail_cv(volatile struct glr *s, uint32_t *gctx, const uint32_t *
     }
     int32_t yr[2];
     if (!lean_conv(s, gctx, desc, kind, m1, tsaddr, (int32_t *)A4_GL_POS + n * 12u, (int32_t *)A4_GL_UV + n * 6u,
-                   (uint32_t *)A4_GL_TEXID + n, (int16_t *)A4_GL_TBOX + n * 4u, yr, cvp)) return 0;
+                   (uint32_t *)A4_GL_TEXID + n, (int16_t *)A4_GL_TBOX + n * 4u, yr, cvp M1H_ARG(n))) return 0;
 #ifdef A4_SKYCEN
     sky_note(kind, desc);
 #endif
@@ -5766,7 +5813,7 @@ static int defer_take(volatile struct glr *s, uint32_t *gctx, const uint32_t *de
         int32_t yr[2];
         uint32_t *sh = (uint32_t *)0x00423000u + n * 24u;    /* pos 12, uv 6, id, box 2, ok, rows 2 */
         sh[19] = lean_conv(s, gctx, desc, kind, m1, tsaddr, (int32_t *)sh, (int32_t *)sh + 12, sh + 18,
-                           (int16_t *)(sh + 20), yr, 0);
+                           (int16_t *)(sh + 20), yr, 0 M1H_ARG(M1H_NONE));
         sh[22] = (uint32_t)yr[0]; sh[23] = (uint32_t)yr[1];
     }
 #endif
@@ -6584,6 +6631,9 @@ static void gobj_clear(volatile struct gstate *g)
 #endif
 #ifdef A4_M1SKY
     M1S->mi = 0;                                    /* the registered mesh went with the store */
+#ifdef A4_M1HOOK
+    M1S->hn = 0;
+#endif
 #endif
 }
 #define GOBJ_MAGIC 0x4A424F47u                   /* 'GOBJ' */
@@ -7372,13 +7422,55 @@ static int64_t m1s_sdivr(int64_t n, int64_t d)
     }
     return n < 0 ? -(int64_t)q : (int64_t)q;
 }
+#ifdef A4_M1HOOK
+/* round 89: the faces' hash key -- the paint and the three texture points, in any order */
+static inline uint32_t m1h_key(uint32_t d, int32_t u0, int32_t v0, int32_t u1, int32_t v1, int32_t u2, int32_t v2)
+{
+    const uint32_t p0 = ((uint32_t)u0 & 0xFFFFu) | (uint32_t)v0 << 16, p1 = ((uint32_t)u1 & 0xFFFFu) | (uint32_t)v1 << 16;
+    const uint32_t p2 = ((uint32_t)u2 & 0xFFFFu) | (uint32_t)v2 << 16;
+    return (((p0 + p1 + p2) * 0x9E3779B1u) ^ ((p0 ^ p1 ^ p2) * 0x85EBCA77u) ^ (d * 0xC2B2AE3Du)) >> (32u - M1H_BITS);
+}
+/* the triangle's texture points (u, v) against face record r's: each corner's for each point (2 bits a point) | 1 << 6,
+ * or 0 when they differ */
+static inline uint32_t m1h_match(const int16_t *r, const int32_t *u, const int32_t *v)
+{
+    uint32_t used = 0, perm = 0;
+    for (uint32_t i = 0; i < 3u; i++) {
+        uint32_t cn = 0;
+        while (cn < 3u && ((used >> cn) & 1u || r[6u * cn + 3u] != u[i] || r[6u * cn + 4u] != v[i])) cn++;
+        if (cn == 3u) return 0;
+        used |= 1u << cn; perm |= cn << (2u * i);
+    }
+    return perm | 1u << 6;
+}
+/* face o (record r, the mesh's paint pi) into the hash: its slot, or M1H_NH when the hash is full or an identical face
+ * (the same paint and points: the same texels, so the same corners) is in it */
+static uint32_t m1h_put(volatile struct m1sky *S, uint32_t *hs, uint32_t pi, const int16_t *r, uint32_t o)
+{
+    const int32_t u[3] = { r[3], r[9], r[15] }, v[3] = { r[4], r[10], r[16] };
+    const int16_t *rec = (const int16_t *)(GOBJ_ARENA + 12u * S->ofs);
+    uint32_t q = m1h_key(S->pd[pi], u[0], v[0], u[1], v[1], u[2], v[2]);
+    for (uint32_t n = 0; n < M1H_NH; n++, q = (q + 1u) & (M1H_NH - 1u)) {
+        const uint32_t e = hs[q];
+        if (!e) { hs[q] = (o + 1u) | pi << 16; return q; }
+        if (((e >> 16) & 3u) == pi && m1h_match(rec + 18u * ((e & 0xFFFFu) - 1u), u, v)) return M1H_NH;
+    }
+    return M1H_NH;
+}
+#endif
 /* the mesh's faces on paint d with a reflecting texel in their box: each corner's screen point (x16, y16) from the
  * least-squares plane of the map's points over the face's texels (those inside it, else those in its box; the
  * points' mean where the texels are on one line), and the faces' corners listed for the second pass */
 static void m1s_corners(volatile struct m1sky *S, const struct gcmesh *me, uint32_t d, const uint16_t *map2)
 {
+#ifdef A4_M1HOOK
+    /* round 89: every paint of the mesh (m1s_pd), each face of them in the hash for the game's own draw of the car */
+    uint32_t *hs = (uint32_t *)(uintptr_t)S->hash;
+    for (uint32_t q = 0; q < M1H_NH; q++) hs[q] = 0;
+#else
     const uint32_t w = GO32(d + 4u) + 1u, h = GO32(d + 8u) + 1u;
     const uint16_t *px16 = (const uint16_t *)GO32(d + 4u * TS_PIX);
+#endif
     const int16_t *rec = (const int16_t *)(GOBJ_ARENA + 12u * me->ofs);
     int16_t *scr = (int16_t *)(uintptr_t)S->scr;
     uint16_t *ix = (uint16_t *)(uintptr_t)(S->scr + 12u * me->nf);
@@ -7386,10 +7478,20 @@ static void m1s_corners(volatile struct m1sky *S, const struct gcmesh *me, uint3
     volatile uint32_t *T = tim2();
     const uint32_t t0 = a4_ntick();
     for (uint32_t k = 0; k < me->ng; k++) {
+#ifdef A4_M1HOOK
+        if (!(me->gm1[k] & 1u) || (me->gm1[k] & 2u) || !m1s_inpd(S, me->gd[k])) continue;
+        const uint32_t dk = me->gd[k], w = GO32(dk + 4u) + 1u, h = GO32(dk + 8u) + 1u;
+        const uint16_t *px16 = (const uint16_t *)GO32(dk + 4u * TS_PIX);
+        const uint32_t pi = dk == S->pd[0] ? 0u : dk == S->pd[1] ? 1u : 2u;
+#else
         if (!(me->gm1[k] & 1u) || (me->gm1[k] & 2u) || me->gd[k] != d) continue;
+#endif
         for (uint32_t o = me->gs[k]; o < (uint32_t)me->gs[k] + me->gc[k]; o++) {
             const int16_t *r = rec + 18u * o;
             struct m1fit F;
+#ifdef A4_M1HOOK
+            const uint32_t hq = m1h_put(S, hs, pi, r, o);
+#endif
 #ifdef A4_M1SKYFACE
             {   /* bench: every face on the paint -- TIM2 [50] its centre at z > 0, [51] z < 0, [52] x > 0, [53] x < 0, [54]
                  * its normal's z > 0, [55] < 0; CRK1 [46] the paint's faces' z extent (min | max << 16, biased 32768),
@@ -7452,6 +7554,9 @@ static void m1s_corners(volatile struct m1sky *S, const struct gcmesh *me, uint3
                 scr[2u * (3u * o + cn)] = (int16_t)x; scr[2u * (3u * o + cn) + 1u] = (int16_t)y;
                 ix[ni++] = (uint16_t)(3u * o + cn);
             }
+#ifdef A4_M1HOOK
+            if (hq < M1H_NH) hs[hq] |= 1u << 24;    /* it reflects */
+#endif
 #ifdef A4_M1SKYFACE
             {   /* bench (round 88, after r91c: no reflection on the front windshield in reverse): the listed faces --
                  * CRK1 [40] centre z > 0, [41] z < 0, [42] x > 0, [43] x < 0, [44] normal z > 0, [45] < 0 */
@@ -7506,14 +7611,41 @@ static void m1s_corners(volatile struct m1sky *S, const struct gcmesh *me, uint3
     S->nidx = ni; S->desc = d; S->ready = 1; T[42]++;
     T[49] += ((a4_ntick() - t0) & 0xFFFFu) << 16;   /* the point tables' making, ticks (high half) */
 }
+#ifdef A4_M1HOOK
+/* round 89 (the owner, r91d: "It needs to work on all player's vehicles"): the registered mesh's paints -- each big
+ * mode-1 group's texture (a second one too), at most three, in group order -- that have a texel to reflect (T != 0, M
+ * != 0). A paint with none (the Ducati's: duc, 0 faces in the pass) is left to var 1, which is then T itself
+ * (m1_texel), as stock's: no capture, no pass and no point table for it (duc: 9 tables in a race, 16 ms each on the
+ * bench). np | 0x100: made, none an answer too. */
+static void m1s_pd(volatile struct m1sky *S, const struct gcmesh *me, const uint16_t *map)
+{
+    uint32_t n = 0;
+    S->pd[0] = S->pd[1] = S->pd[2] = 0;
+    for (uint32_t k = 0; k < me->ng && n < 3u; k++) {
+        const uint32_t d = me->gd[k];
+        if (!(me->gm1[k] & 1u) || (me->gm1[k] & 2u) || !m1s_big(d) || m1s_inpd(S, d)) continue;
+        const uint32_t t = (GO32(d + 4u) + 1u) * (GO32(d + 8u) + 1u);
+        const uint16_t *px16 = (const uint16_t *)GO32(d + 4u * TS_PIX);
+        uint32_t i = 0;
+        while (i < t && !(px16[i] && map[i])) i++;
+        if (i < t) S->pd[n++] = d;
+    }
+    S->np = n | 0x100u;
+}
+#endif
 /* the paint this car's second pass reflects on (its mode-1 groups drawn from it as var 3), or 0: none this frame */
 static uint32_t m1s_will(const struct gcmesh *me, const uint16_t *m1map, const uint16_t *m1tab)
 {
     volatile struct m1sky *S = m1s_get();
     if (S->mi != (uint32_t)(me - GCMESH) + 1u || S->verts != me->verts || S->ofs != me->ofs || S->errs) return 0;
+#ifdef A4_M1HOOK
+    if (!S->np) { if (!m1map) return 0; m1s_pd(S, me, m1map); }
+    const uint32_t d = S->pd[0] && m1s_paint(S->pd[0], m1tab) ? S->pd[0] : 0u;   /* the first paint that reflects */
+#else
     uint32_t d = 0;
     for (uint32_t k = 0; k < me->ng && !d; k++)
         if ((me->gm1[k] & 1u) && !(me->gm1[k] & 2u) && m1s_paint(me->gd[k], m1tab)) d = me->gd[k];
+#endif
     if (!d || ((!S->ready || S->desc != d) && !m1map)) return 0;
 #ifdef A4_M1MAPCHG
     if (m1map) {   /* bench (round 88, after r91c: no reflection on the front windshield in reverse): is the paint's map
@@ -7531,7 +7663,11 @@ static uint32_t m1s_will(const struct gcmesh *me, const uint16_t *m1map, const u
     S->want = ((volatile struct glr *)A4_GL_SCRATCH)->frames;   /* this frame's composite captured for the next */
     return d;
 }
+#ifdef A4_M1HOOK
+#define M1S_VAR(me, k, d) (((d) && m1s_inpd(M1S, (me)->gd[k]) && ((me)->gm1[k] & 1u) && !((me)->gm1[k] & 2u)) ? 3 : GC_M1(me, k))
+#else
 #define M1S_VAR(me, k, d) (((d) && (me)->gd[k] == (d) && ((me)->gm1[k] & 1u) && !((me)->gm1[k] & 2u)) ? 3 : GC_M1(me, k))
+#endif
 /* after a car's groups: its reflecting faces on paint d again, over the last frame's capture at their screen points
  * (1 - dst alpha, 1) */
 static void m1s_pass(volatile struct glr *s, const struct gcmesh *me, uint32_t d, uint32_t base, const uint16_t *m1map)
@@ -7560,6 +7696,91 @@ static void m1s_pass(volatile struct glr *s, const struct gcmesh *me, uint32_t d
     gl_texcoordptr(2, GL_SHORT, 12, (const void *)(base + 6u));
     T[40]++;
 }
+#ifdef A4_M1HOOK
+/* Round 89 (the owner's r91d videos, the Mini Cooper in reverse: its windshield flat light blue where stock's moves
+ * with the scenery). With the camera nearer the car than the GPU's near plane (ZW 126) the car is the game's (r91d's
+ * box test refuses it), its faces through the hook, the paint baked as var 1 from a table that holds no picture. So a
+ * paint triangle there -- its texture one of the registered mesh's paints (m1s_pd), on the screen's table, its texture
+ * points a face of the paint (m1s_corners' hash, in any order) -- is drawn as var 3 too, and where that face reflects it
+ * goes into the batch's second pass (m1h_pass) at its corners' points, the GPU car's own (m1s_pass); a piece of a cut
+ * triangle (A4_CLIPG) at each piece corner's point inside the face (barycentric in texture space, where the points are
+ * a plane). A triangle matching no face (the game's near cut, an animated face) stays var 1. TIM2 [37] paint
+ * triangles matched, [38] of them reflecting, [39] second passes drawn, [59] paint triangles matching no face. */
+static uint32_t m1h_face(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc, uint32_t d)
+{
+    volatile struct m1sky *S = M1S;
+    if (S->magic != M1S_MAGIC || !S->mi || S->errs || (S->np && !m1s_inpd(S, d))) return 0;
+    const struct gcmesh *me = &GCMESH[S->mi - 1u];
+    if (me->verts != S->verts || me->ofs != S->ofs) return 0;
+    const uint16_t *map = (const uint16_t *)gctx[0x5c / 4];
+    if (!map || (uint32_t)(uintptr_t)m1_table(gctx) != *(volatile uint32_t *)A4_GL_BB) return 0;
+    if (!S->np) { m1s_pd(S, me, map); if (!m1s_inpd(S, d)) return 0; }
+    if (!S->ready || S->desc != S->pd[0]) m1s_corners(S, me, S->pd[0], map);
+    const uint32_t *hs = (const uint32_t *)(uintptr_t)S->hash;
+    const int16_t *rec = (const int16_t *)(GOBJ_ARENA + 12u * S->ofs);
+    const int32_t u[3] = { (int32_t)desc[4], (int32_t)desc[7], (int32_t)desc[10] };
+    const int32_t v[3] = { (int32_t)desc[5], (int32_t)desc[8], (int32_t)desc[11] };
+    uint32_t q = m1h_key(d, u[0], v[0], u[1], v[1], u[2], v[2]);
+    for (uint32_t n = 0; n < M1H_NH; n++, q = (q + 1u) & (M1H_NH - 1u)) {
+        const uint32_t e = hs[q];
+        if (!e) break;
+        if (S->pd[(e >> 16) & 3u] != d) continue;
+        const uint32_t pm = m1h_match(rec + 18u * ((e & 0xFFFFu) - 1u), u, v);
+        if (!pm) continue;
+        if ((e >> 24) & 1u) S->want = s->frames;   /* a reflecting face: this frame's composite captured for the next */
+        tim2()[37]++;
+        return (e & 0x100FFFFu) | pm << 25;         /* face + 1 | reflects << 24 | each point's corner << 25 */
+    }
+    tim2()[59]++;
+    return 0;
+}
+/* a matched triangle (m1h_face's hf) at batch slot `slot`: if its face reflects, its points and its place in the second
+ * pass's list */
+static void m1h_note(const void *cvp, uint32_t slot, uint32_t hf)
+{
+    volatile struct m1sky *S = M1S;
+    if (!((hf >> 24) & 1u)) return;
+    tim2()[38]++;
+    if (!S->cur || S->ncomp - S->cfr > M1S_OLD || slot >= MAXT) return;   /* no capture to reflect this render */
+    if (S->hn && slot <= S->hlast) S->hn = 0;       /* a batch begun again without a draw (a guard: none is) */
+    const uint32_t o = (hf & 0xFFFFu) - 1u, pm = hf >> 25;
+    const int16_t *q = (const int16_t *)(uintptr_t)S->scr + 6u * o;   /* the face's corners' points (x16, y16) */
+    int16_t *tc = (int16_t *)(uintptr_t)S->tc + 6u * slot;
+#ifdef A4_CLIPG
+    if (cvp) {
+        const struct clipv *cv = (const struct clipv *)cvp;
+        const int16_t *r = (const int16_t *)(GOBJ_ARENA + 12u * S->ofs) + 18u * o;
+        const int32_t u0 = r[3], v0 = r[4], u1 = r[9], v1 = r[10], u2 = r[15], v2 = r[16];
+        int64_t A = (int64_t)(u1 - u0) * (v2 - v0) - (int64_t)(u2 - u0) * (v1 - v0);
+        if (!A) return;
+        for (uint32_t i = 0; i < 3u; i++) {
+            const int32_t cx = cv[i].u, cy = cv[i].v;
+            int64_t e0 = (int64_t)(u2 - u1) * (cy - v1) - (int64_t)(v2 - v1) * (cx - u1);
+            int64_t e1 = (int64_t)(u0 - u2) * (cy - v2) - (int64_t)(v0 - v2) * (cx - u2);
+            int64_t e2 = (int64_t)(u1 - u0) * (cy - v0) - (int64_t)(v1 - v0) * (cx - u0);
+            const int64_t aA = A < 0 ? -A : A;
+            if (A < 0) { e0 = -e0; e1 = -e1; e2 = -e2; }
+            int64_t x = clip_sdivr(e0 * q[0] + e1 * q[2] + e2 * q[4], (uint32_t)aA);
+            int64_t y = clip_sdivr(e0 * q[1] + e1 * q[3] + e2 * q[5], (uint32_t)aA);
+            if (x < -32768) x = -32768;
+            if (x > 32767) x = 32767;
+            if (y < -32768) y = -32768;
+            if (y > 32767) y = 32767;
+            tc[2u * i] = (int16_t)x; tc[2u * i + 1u] = (int16_t)y;
+        }
+    } else
+#else
+    (void)cvp;
+#endif
+    for (uint32_t i = 0; i < 3u; i++) {
+        const uint32_t cn = (pm >> (2u * i)) & 3u;
+        tc[2u * i] = q[2u * cn]; tc[2u * i + 1u] = q[2u * cn + 1u];
+    }
+    uint16_t *ix = (uint16_t *)(uintptr_t)S->hix + 3u * S->hn;
+    ix[0] = (uint16_t)(3u * slot); ix[1] = (uint16_t)(3u * slot + 1u); ix[2] = (uint16_t)(3u * slot + 2u);
+    S->hn++; S->hlast = slot;
+}
+#endif
 /* After the composite, before the 2D phase (the HUD, the blur): the frame's top rows -- all of it, the 3D over the
  * backdrop included, as stock's reflection reads them -- at twice their quarter, channel by channel, point-sampled into a
  * 256 x 64 RGB565 texture under a fresh name, for the next frame's pass. The phone (r91b): a fresh texture uploads
@@ -7666,6 +7887,10 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
             && (GO32(d + 4u) + 1u) * (GO32(d + 8u) + 1u) >= M1_BIG && GO32(d + 4u) < 256u && GO32(d + 8u) < 256u)
             xs = nf + (nf + 1u) / 2u;
     }
+#ifdef A4_M1HOOK
+    if (xs && nf < 0xFFFFu) xs += M1H_REC;          /* round 89: the faces' hash, the batch's points and list (m1h_*) */
+    else xs = 0;
+#endif
 #else
     const uint32_t xs = 0;
 #endif
@@ -7767,6 +7992,10 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
         volatile struct m1sky *S = m1s_get();
         S->mi = c->nmesh + 1u; S->verts = verts; S->ofs = me->ofs; S->ready = 0;
         S->scr = GOBJ_ARENA + 12u * (g->aused + 3u * nf);   /* after the records and the animation's words */
+#ifdef A4_M1HOOK
+        S->hash = S->scr + 12u * (nf + (nf + 1u) / 2u); S->tc = S->hash + 4u * M1H_NH; S->hix = S->tc + 12u * MAXT;
+        S->np = 0; S->hn = 0; S->hlast = 0;
+#endif
         g->aused += xs;
 #ifdef A4_M1SKYCEN
         tim2()[56]++;                               /* bench: registrations */
@@ -10064,6 +10293,9 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
         gl_clearcolorx(FX, 0, FX, 0);                    /* magenta sentinel (see SENTINEL_*) */
         gl_clear(clear_bits(s));
         s->bfill = 0;
+#ifdef A4_M1HOOK
+        if (M1S->magic == M1S_MAGIC) M1S->hn = 0;      /* round 89: the second pass's list goes with the batch */
+#endif
 #ifdef A4_GPUSKY
         sky_frame_begin(s);                             /* the backdrop, before the list and the table */
 #endif
@@ -10371,7 +10603,7 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
          * first differing word's index (0-11 pos, 12-17 uv, 18 id, 19-22 box, 23-24 rows) */
         volatile uint32_t *ck = (volatile uint32_t *)0x00412D00u;
         int32_t lp[12], lu[6], yr[2]; uint32_t lid = 0; int16_t lb[4];
-        int ok = lean_conv(s, gctx, desc, kind, m1, tsaddr, lp, lu, &lid, lb, yr, 0);
+        int ok = lean_conv(s, gctx, desc, kind, m1, tsaddr, lp, lu, &lid, lb, yr, 0 M1H_ARG(M1H_NONE));
         const int16_t *ob = (const int16_t *)A4_GL_TBOX + n * 4u;
         int bad = -1;
         for (int k = 0; k < 12 && bad < 0; k++) if (lp[k] != POS[vb*4 + k]) bad = k;
@@ -11456,6 +11688,42 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st,
 #endif
 }
 
+#ifdef A4_M1HOOK
+/* round 89: the batch's reflecting paint triangles again (m1h_note), over the last capture at their points -- as m1s_pass
+ * draws the GPU car's: (1 - dst alpha, 1), so a reflecting texel (alpha 0x80) gets 0.498 of twice the quarter, any other
+ * none, and the first reflection at a pixel leaves it 0xFF; nearest first (the table is drawn far to near), so where two
+ * such faces overlap the one on top reflects. The table's own depth state and the batch's own corners: where the
+ * triangle drew, its copy passes. vp, up: the arrays the batch left set. */
+static void m1h_pass(uint32_t nt, const void *vp, const void *up)
+{
+    volatile struct m1sky *S = M1S;
+    if (S->magic != M1S_MAGIC || !S->hn) return;
+    const uint32_t n = S->hn;
+    S->hn = 0;
+    if (!S->mi || S->hlast >= nt || !S->cur) return;
+    uint16_t *ix = (uint16_t *)(uintptr_t)S->hix;
+    for (uint32_t i = 0, j = n - 1u; i < j; i++, j--)
+        for (uint32_t k = 0; k < 3u; k++) { const uint16_t t = ix[3u * i + k]; ix[3u * i + k] = ix[3u * j + k]; ix[3u * j + k] = t; }
+    int TM[16];
+    for (int i = 0; i < 16; i++) TM[i] = 0;
+    TM[0] = 12; TM[5] = 64; TM[10] = FX; TM[15] = FX;   /* x16 screen points to the capture (m1s_pass) */
+    gl_matrixmode(GL_TEXTURE); gl_loadmatrixx(TM);
+    gl_bindtex(GL_TEXTURE_2D, S->cur);
+    gl_vertexptr(4, GL_FIXED, 0, (const void *)A4_GL_POS);
+    gl_texcoordptr(2, GL_SHORT, 0, (const void *)(uintptr_t)S->tc);
+#ifdef A4_MESH
+    if (MESH_ON()) mesh_enter(KIND_TEX);
+#endif
+    gl_enable(GL_BLEND); gl_blendfunc(GL_ONE_MINUS_DST_ALPHA, GL_ONE);
+    gl_drawelements(GL_TRIANGLES, (int)(3u * n), GL_UNSIGNED_SHORT, ix);
+    gl_disable(GL_BLEND);
+    kind_leave(KIND_TEX);
+    gl_loadidentity(); gl_matrixmode(GL_MODELVIEW);
+    gl_vertexptr(4, GL_FIXED, 0, vp);
+    gl_texcoordptr((int)UVC, GL_FIXED, 0, up);
+    tim2()[39]++;
+}
+#endif
 /* Draw the accumulated frame in arrival order, one glDrawArrays per run of
  * consecutive equal TEXID words (same texture or colour, same kind). Identical
  * pixels to the per-triangle path; just fewer GL calls. No depth, no sort. */
@@ -11660,6 +11928,9 @@ static void BATCH_DRAW_FN(uint32_t nt)
 #if defined(A4_RUNDIAG) || defined(A4_TEL)
     ((volatile uint32_t *)0x00412000u)[4] += nr;     /* draw calls this frame */
 #endif
+#ifdef A4_M1HOOK
+    m1h_pass(nt, ix ? (const void *)A4_GL_POS : (const void *)ro->pos, ix ? (const void *)A4_GL_UV : (const void *)ro->uv);
+#endif
     return;
     }
 #endif
@@ -11684,6 +11955,9 @@ static void BATCH_DRAW_FN(uint32_t nt)
     }
     draw_run(cur, run_start, nt - run_start, &st, 0);  /* final run */
     kind_leave(st);
+#ifdef A4_M1HOOK
+    m1h_pass(nt, (const void *)A4_GL_POS, (const void *)A4_GL_UV);
+#endif
 #if defined(A4_RUNDIAG) || defined(A4_TEL)
     {   /* draw calls this frame (one per same-texture run); folded at flush */
         uint32_t runs = 1; for (uint32_t t = 1; t < nt; t++) if (TEXID[t] != TEXID[t-1]) runs++;

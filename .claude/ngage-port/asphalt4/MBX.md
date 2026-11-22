@@ -15007,3 +15007,61 @@ c. Not entered by the bench before: cars the sphere refused and the box takes --
   ~2.5 + the convert ~2.4-2.8 measured on the phone, a fused pass saving ~2-3; one texture sheet ~1.5-3. Together
   ~8-12 ms: **Montmartre ~44-48 ms (~21-23 fps), lighter scenes ~24-26 fps**. The runs' noise is ~1-2 ms a segment.
   30 fps still needs the game's own work cut (the rest ~19 ms on the phone).
+
+### Phone round r91d (the owner: "It's not fixed. If you only applied it to the veyron, that doesn't mean it's fixed. It needs to work on all player's vehicles where applicable. I tried this time with the mini cooper ... the first video is our gpu mod. the second is the og software rasterized one. Reflections should look like the original one. It shouldn't take any impact in performance")
+- The videos, every frame (up91d/vid, contact sheets and car crops): reversing the Mini Cooper, **stock's windshield is
+  dark glass with the scenery moving across it; r91d's is flat light blue, the same frame after frame**. r91d's
+  telemetry: the second pass and the capture stop in the reverse stretch (cap4-cap5: 573 scenes, 0 passes, 1 capture).
+- Why (mini_t: C94 + A4_M1STINT + A4_M1TINT + A4_CARWHY, CARMENU = the Mini, alltracks_rev.sh): chase view green (the
+  GPU car, var 3); **reverse view the whole car magenta -- the game's own per-face draw, the paint a var-1 bake**;
+  CARWHY in the reverse window: 1,015 refused at the near plane, 85 not inside. r91d's box test is right: the Mini's
+  front really is nearer the camera than the GPU's near plane (ZW 126; the game's own is 64), so the GPU cannot draw
+  that car without cutting it. The var-1 bake reads the table the game points at -- the screen's back buffer, which
+  on the GPU build holds no picture where the 3D goes -- hence the flat colour. The Veyron passed in r91d only because
+  its front stays outside the plane.
+- Second gap (the census of round 88): m1s_will took one paint a mesh; a bike carries a second big mode-1 texture
+  (ducati_monster_969_p 128x128 besides the 256x128 body; the F430's interior likewise, not unlocked on the owner's save).
+- **Fix (A4_M1HOOK, new; C95 = C94 + it)**: the GPU car's live pass, on the game's own triangles.
+  - The registered mesh's paints (m1s_pd): every big mode-1 group's texture, up to three. m1s_corners makes the point
+    table for all of them and puts every face of them in a hash (2,048 words: face + 1 | paint << 16 | reflects << 24)
+    keyed by the paint and the face's three texture points in any order. M1S_VAR gives var 3 to every one of them.
+  - In the hook (lean_conv), a mode-1 triangle on one of those paints, on the screen's table, whose texture points are a
+    face's (m1h_face): drawn as var 3, and if the face reflects (m1h_note) its corners' capture points -- the face's own
+    from the point table, matched corner by corner -- go into an array beside the batch slot, and the slot into a list.
+    A piece of a CLIPG cut triangle gets each corner's point inside the face (barycentric in texture space, where the
+    points are a plane). A triangle that matches no face (the game's near cut, an animated face) stays var 1.
+  - At the batch's end (m1h_pass, inside batch_draw after its runs): the listed triangles again from the batch's own
+    positions over the last capture -- m1s_pass's state: (1 - dst alpha, 1), the texture matrix 12 / 64, the table's
+    depth state -- nearest first (the list reversed: the table is drawn far to near, so where two reflecting faces
+    overlap the one on top reflects and leaves alpha 0xFF). A matched face asks for this frame's capture (S->want).
+  - Memory: the registration's arena records grow by ~19 KB (the hash, MAXT x 3 points, MAXT x 3 indices). TIM2 [37]
+    paint triangles matched, [38] reflecting, [39] second passes, [59] paint triangles matching no face (frec3 timers).
+  - Guards: A4_M1HOOK needs A4_M1SKY, A4_LEAN, A4_HPERSP, A4_REORDER; not A4_DEFER or A4_ATLAS. The bench's own
+    lean_conv calls (A4_LEANCHECK, A4_DEFERCHECK) pass no slot and note nothing. C90 / C91 / C92 / C93 / C94 rebuild to
+    r90a's, r90b's, r91a's, r91c's and r91d's bytes with the code in the tree.
+- hkt (C95 + both tints + A4_CARWHY, the Mini, alltracks_rev.sh): reverse view **the windshield and roof windows green,
+  no magenta** -- the game's own triangles now var 3.
+- h95 / s95 (C95 untinted / the handoff baseline, the same script, 16 shots at the end held in reverse; both runs
+  reversed into the verge at the same place): **the windshield and the roof windows dark teal glass with the trees and
+  grass in them, as stock's**; ours a little coarser along the streaks (the capture is 4:3 across and each face's
+  points are a plane). The owner's comparison is the phone's.
+- mk_c95 (C95, the C key every 5th tap in reverse; the telemetry ring waits for the chase camera, the marks do not):
+  in reverse **~145 paint triangles a render matched to a face, ~68 of them reflecting, one second pass a render, and 0
+  paint triangles matching no face** (no near-cut paint triangle reached the hook).
+- Cost. Same route both (ab94 / ab95: C94 / C95 + A4_CARREC, A4_AUTOPILOT, A4_AUTOPILOT_TAP, A4_BENCH_REVERSE=250
+  _LEN=1500, the Mini; the autopilot's input by step, so the route is the same): **the reverse renders 30.0 ms (r91d)
+  against 30.9 ms (C95)**; by segment equal where the car stands (28.4 / 28.8 both), +0.9 to +2.7 ms in the busier
+  ones (the runs' own noise 0.2-1.9 ms a bin), the hook's own time unchanged within noise, one more draw a render.
+  The difference is the capture: r91d took none in reverse (the phone: cap4-cap5, 573 scenes, 1 capture); C95 takes
+  one a render as the chase view always has since r91c -- **on the phone 1.07-1.18 ms each (r91d's telemetry)**. Gone
+  in exchange: the reverse paint's var-1 re-bakes (2.3 ms each on the phone, at most every 8th present). Forward
+  driving: the code the GPU car runs is unchanged except a bike's second paint now in the pass.
+- duc (C95 + both tints, the Ducati Monster 696, forward 70 s then '6'): **no green and no magenta anywhere on the bike
+  -- its paints have no texel to reflect**, so stock shows no reflection on it either; the bike did not reverse (0 km/h,
+  the camera behind). But its telemetry: the pass ran every render with **0 faces**, a capture every render, and **9
+  point tables in the race (144 ms in all, 16 ms each on the bench)** -- the pass's cost for nothing since r91b, the
+  table made again at each re-registration of the animated mesh. So m1s_pd keeps only a paint with a texel to reflect
+  (T != 0, M != 0: one scan of its texels a registration), and m1s_will takes the first such paint: the Ducati gets no
+  var 3, no pass, no capture and no table; its paint stays var 1, which with every M 0 is T itself (m1_texel), as
+  stock draws it. The hook asks for a capture only for a reflecting face. C90-C94 rebuild to their bytes again; the r91e
+  candidate is this build (a4_r91e_cand.exe, sha256 992b6b369dc1c7b9..., 1,026,300 bytes); bat95 runs on it.
