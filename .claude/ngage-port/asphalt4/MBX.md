@@ -14894,5 +14894,22 @@ shadow insert 1.5, +31A26/50 1.6, the post ~2.8, ~6 unnamed). 30 fps is 33.3 ms:
   cost), the rest 13.7 (logic, the walk, the shadow insert, +31A26/50, the post's remainder, ~6 unnamed), the yield
   1.6, the 2D 1.8. **30 fps everywhere needs, besides the three, a cut in the game's own per-frame work** (the "rest":
   ~14 ms bench, ~19 phone) -- the deep reverse engineering of round 60's "bake the static world" line.
-- Also seen: cl_cvcp's yield 2.8 -> 1.6 ms -- the runtime's re-posts (+606 every loop iteration, round 56) convert
-  inside the yield too; skipping a post with no new frame (round 56's v3, ~0.8 ms) is part of that.
+- Also seen: cl_cvcp's yield 2.8 -> 1.6 ms. **Unexplained** (corrected: my first note put it on the runtime's re-posts,
+  but the record has one post a render in a race -- the model's stats lines, round 88's RE notes).
+- **Caveats (the owner: "any caveats?")**:
+  1. The 1.3x bench-to-phone scale is one comparison (different cars and routes) and not uniform by block: the model
+     overstates memory-streaming code ~3x (round 88: the convert ~2.4 ms on the phone). The phone measured the copy
+     and the convert itself: ~2.5 ms the composite's rows (comp less read), ~2.4-2.8 the convert -- so **cl_cvcp's
+     ceiling on the phone is ~5 ms, not 1.3 x 5-9**, and a fused pass ~2-3.
+  2. Merged draws cannot reach cl_call's ceiling: a third of the triangles have texcoords outside [0, 1] (round 23's
+     census: repeat-wrapped, no atlas for them), round 24's atlas took calls 210 -> 153 (-27%), not bit-exact, ~4 MB.
+     Unless the phone's per-draw cost is the higher ~47 us fit, a realistic merge is ~1-3 ms there.
+  3. cl_gpuw has one matched stretch (segments 100-119), none in Montmartre. Hiding the wait means the GPU drawing
+     frame N while the CPU makes N+1: the 3D a frame late against what the game still draws in software (sprites,
+     smoke, lights, the HUD) unless those move to the GPU -- a "real frames" question for the owner.
+  4. One run each, no second baseline: run-to-run noise not measured; routes differ (compared by segment).
+  5. cl_all's figure carries my correction (the base's cars' flush put back) -- an assumption.
+  6. Unboosted renders only: boosts (21-38% of the owner's renders) add ~8-10 ms (the blur), untouched here.
+  7. The ceilings do not add: their sum in segments 100-119 is ~19 ms, together ~13.
+  Revised phone estimate: the GPU wait ~4-6 (with 3.'s cost), a fused copy/convert ~2-3, merged draws ~1-3: ~7-12 ms --
+  Montmartre ~44-49 ms (~20-23 fps), elsewhere ~24-26 fps. 30 fps still needs the game's own per-frame work cut.
