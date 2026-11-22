@@ -14845,3 +14845,23 @@ c. State the bench did not enter: a GL error in a capture (the reflection off fo
 - Where the goal stands: an unboosted render 52-58 ms on the phone (~17-19 fps) against 33 ms for 30 fps. Round 88's
   RE plan is done (STATUS.md); presenting from the GPU without the read-back was measured in rounds 55-57
   (eglSwapBuffers ~12 ms a frame, what it would save) and closed.
+
+## Round 88 bench: the ceilings toward 30 fps (owner: "are you sure it's hard to get 30 fps?" ... "go for it")
+The phone's unboosted Paris render (r91c marks, FRC4): 55.7 ms -- the 3D 20.6 (our hook 16.0: objects 3.6, cars 2.5,
+the shadow's draws 3.8, the batch 5.3, the list 1.5; the game's 4.6), the composite 10.9 (read 8.4, ~5.5-6.5 of it the
+first strip's wait for the tile render), the 2D 2.3, the yield 2.5, the rest 19.3 (logic 3.3, walk 2.9, cars 0.8,
+shadow insert 1.5, +31A26/50 1.6, the post ~2.8, ~6 unnamed). 30 fps is 33.3 ms: ~22 ms to find. The 3x engine's cap
+(a third of the 85.33 ms step) is 28.4 ms, ~35 fps: not the limit.
+- **The yield, read again (runtime +16BC, dumped from the bench's memory: EKA2L1_PCMEM at 0x701016BC, 64 KB from the
+  runtime's text 0x70100000)**: RTimer::After(N x 1000) and SetActive when N != 0, then **while the thread has requests
+  pending** (RThread::RequestCount) CActiveScheduler::Current()->RunIfReady; it returns 1 when its own timer has run,
+  else Cancels the timer and returns 0 **as soon as no request is pending**. So round 56's "spins until the timer
+  fires" was wrong in the part that matters: it does not wait out the 10 ms (FRC4's 2.5 ms says the same); its time is
+  the other active objects' work run there -- the window server's events, the framework's post timer, the game's
+  sound (EKA2L1_AUDIO_NULL gives the bench that work) -- and the kernel calls. Not an idle wait, so no ceiling of it:
+  what runs in it is to be named (a gated cycle profile, EKA2L1_PCPROF_ON=701016bc).
+- The ceilings (bench only, r91c's source, Paris 300 s with the owner's save, the N95 model, one cost removed a run):
+  cl_base (C93 as is); cl_gpuw (GPUMODEL's tile render 0: fill_us and tri_ns -- the readback's wait gone, its copy
+  kept: what drawing the next frame while the GPU renders this one could save at most); cl_call (draw_us and bind_us
+  0: what merging draws could save at most); cl_cvcp (A4_CEIL_CVT + A4_CEIL_COMP: no present convert and no composite
+  rows -- a fused pass's most); cl_all (the three together). Script ceilrun.sh (scratchpad). Running.
