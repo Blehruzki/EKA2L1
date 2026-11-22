@@ -14915,3 +14915,68 @@ shadow insert 1.5, +31A26/50 1.6, the post ~2.8, ~6 unnamed). 30 fps is 33.3 ms:
   7. The ceilings do not add: their sum in segments 100-119 is ~19 ms, together ~13.
   Revised phone estimate: the GPU wait ~4-6 (with 3.'s cost), a fused copy/convert ~2-3, merged draws ~1-3: ~7-12 ms --
   Montmartre ~44-49 ms (~20-23 fps), elsewhere ~24-26 fps. 30 fps still needs the game's own per-frame work cut.
+
+### The front windshield in reverse (the owner, after r91c: "reflections don't work when going reverse (they should apply to the front windshield, but it doesn't) ... The camera positions itself at the front of the car ... there was no reflections there")
+- A4_BENCH_REVERSE=<step> (new, bench, with A4_AUTOPILOT): the brake ('6' and bit 18, action 0's fixed bit) from that
+  step for A4_BENCH_REVERSE_LEN steps, let go 3 in every 20. rva/rvb/rvc/rvd (LA): the car braked to a stop and stayed
+  -- held, let go once, tapped, with and without the script's own '5' held. **Why: the plain autopilot writes K[0] =
+  K[1], so no step ever sees a press** (K[1] & ~K[0]); holding works (the brake), pressing never did. With
+  A4_AUTOPILOT_TAP (K[0] the last step's keys) rve reverses: posts 1400-1725 the camera at the car's front.
+- rve (+ A4_M1SKYCEN): the second pass drawn every render through the reverse stretch (passes 2x captures, 0 refused,
+  not drawn 4 in all). Chase view: the rear window shows the scenery; from the front **the windshield is a flat white-
+  to-blue gradient, the same frame after frame**.
+- rvm (+ A4_M1SKYMUT, the capture white then black): consecutive posts differ by a uniform block over the rear window in
+  the chase view, and **not at all over the front windshield** in the reverse view (only edges and noise). So the pass
+  adds nothing there: the windshield is not among its faces, or its texels are not marked reflecting (alpha 0xFF).
+- mflb (+ A4_M1SKYFACE, new: the paint's faces and the listed ones by half): the Veyron's paint 564 faces (z -102..103
+  long, x -49..49 wide); listed (a reflecting texel in the box) 22 with their centre at z > 0, 30 at z < 0.
+- The pass's point table, the face list and the paint's alpha marks are made once a race from the map the game gives
+  then (ctx[0x5C]) -- an assumption never checked: that the map does not change. rmc (+ A4_M1MAPCHG, new: the map's
+  pointer and a sampled hash each render, CRK1 [40..45]) through the reverse stretch: running.
+- rmc (A4_M1MAPCHG): the map's pointer and sampled hash **the same in every render**, reverse included (0 changes). Not it.
+- srv (the handoff baseline, unmodified; alltracks_rev.sh, new: '5' held 70 s, then '6' tapped -- '6' is the brake on
+  the owner's save, and the game reverses): posts 925-1375 at the car's front. **Stock's windshield carries faint,
+  changing streaks** (the scenery over a near-white base: T + table[M]/4 saturates most of it); r91c's is the base
+  gradient, frame after frame.
+- rvt (+ A4_M1STINT, new: the paint's reflecting texels green; + A4_M1TINT: every mode-1 bake magenta): chase view --
+  the GPU car, its rear window green; reverse view -- **the whole car magenta: the game's per-face path draws it**, from
+  a var-1 bake of the paint (64K texels, re-baked at most every M1_BIG_EVERY presents), never the live pass.
+- rvw (+ A4_CARWHY, new: the player's mesh's car takes by outcome, CRK1 [40..47]): in the windows with the camera
+  behind, every early take left to the late one and taken; in the reverse window **361 refused at the near plane**.
+  The test is the bounding sphere's (M[11] + rad + 2 > -(ZK + 4)); at the car's front the camera is close enough for
+  the sphere (radius ~115) to reach the plane though no vertex does.
+- **The cause: the GPU cars' near-plane test on the sphere.** Fix (A4_CARNEARBOX, new): the test on the mesh's box --
+  GCBND, which gca_refresh grows with the animated corners at every take -- through gitem_box's own transform: the
+  nearest corner's view z (each axis's larger product, floored as gitem_box floors each corner), +2, against -(ZK+4).
+  Every vertex is inside the box, so the GPU's near plane still cuts none (round 62's reason for the test holds).
+- rvf (A4_CARNEARBOX + both tints + A4_CARWHY): reverse view -- the car the GPU's again (no magenta), **its windshield
+  green: the game's map marks it reflecting**, so the live pass now covers it. C90 / C91 / C92 / C93 rebuild to r90a's,
+  r90b's, r91a's and r91c's bytes with every flag of this hunt in the tree.
+- rvy (A4_CARNEARBOX, no tints, the bench reverse): **the windshield carries the scenery** -- a palm's trunk as a brown
+  streak (post 1560), the verges' green at its edges -- as stock's does (srv), where r91c's was the bare base.
+- **C94 = C93 + A4_CARNEARBOX. r91d candidate: a4_r91d_cand.exe, unbaked, sha256
+  d8d6da2eea769e666ec53939bf98baa7b7f82a73cea06aac58d5809d1db9e80c, 1,021,108 bytes** (r91c + 212: the helper and the
+  changed test), no 0xDEADBEEF.
+- **bat94 on it**: at94 (six maps 45 s, one session) framestat 5,645 (at93c 5,639), the boot fault only, every map drawn;
+  m94 (Instant Play 300 s, modelled N95, 7 C marks) 2,386 (m93c 2,422; r91b 2,312-2,415: within the runs' spread), the
+  boot fault only; pa94 (Paris 400 s, 7 marks) 3,587 (pa93c 3,486), the boot fault only; **rv94 (LA, the exact binary,
+  real keys: '5' 70 s then '6' tapped -- alltracks_rev.sh) 2,327, the boot fault only: reversing from post ~1375, the
+  front windshield reflecting** (posts 1500, 1620: a palm, the verge's green), as the original's (srv 1000-1300).
+- gar_C93 / gar_r91d (the same menu path to LA's race on r91c's and r91d's exact binaries, posts 250-699 dumped): 358
+  of r91c's 450 posts have a byte-identical post in r91d's run, **every garage post among them** ("CHOOSE YOUR RIDE",
+  the car close to the camera: 380-500); the 92 without one are the event page's animated icons and the race's load
+  (560 on), timing, not drawing.
+
+Rule 4, before r91d goes out (A4_CARNEARBOX):
+a. Guesses, each settled or named: (1) the view transform's z row (R[2], R[5], R[8], >> 14, + T[2]) -- gitem_box's
+   own, read back line by line; (2) the box holds every vertex the GPU draws -- GCBND is built from every baked
+   corner and grown at each take by gca_refresh for the animated ones (read: it runs inside gcar_mesh, before the
+   test); (3) the floor of the largest sum equals the largest of the corners' floors (floor is monotonic), so the
+   test's corner is gitem_box's nearest exactly; (4) nothing else needed the sphere ahead of the plane -- gitem_box's
+   corners (now ahead by the box), the early take's gcar_inside (still the sphere: an uncertain early take falls to
+   the late one, as before -- rvw's windows show every early call left to the late take and taken).
+b. Read back: the helper and its one call; WHY() is empty without A4_CARWHY and #undef'd at the function's end; C90 /
+   C91 / C92 / C93 rebuild to r90a's, r90b's, r91a's and r91c's bytes with every bench flag of this hunt in the tree.
+c. Not entered by the bench before: cars the sphere refused and the box takes -- the player's in reverse (rv94, the
+   exact binary), opponents passing close to the camera (in at94/m94/pa94's races, no fault, frames within the
+   runs' spread); the garage's car close to the camera (gar_C93 / gar_r91d: the menus' posts compared, below).

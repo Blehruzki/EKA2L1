@@ -1564,6 +1564,19 @@ static __attribute__((unused)) uint32_t ap_key(uint32_t race, uint32_t st)
 #else
     (void)race;
 #endif
+#ifdef A4_BENCH_REVERSE
+    /* bench (round 88, after r91c: the owner -- no reflection on the front windshield while reversing, the camera at
+     * the car's front): the brake held from step A4_BENCH_REVERSE for A4_BENCH_REVERSE_LEN steps -- '6' and bit 18,
+     * which +2092 adds to action 0's (the brake's) mapped keys whatever the save's key map says (round 74's reading for
+     * the nitro's bit 19): the car stops, then reverses, and the chase camera turns to its front */
+#ifndef A4_BENCH_REVERSE_LEN
+#define A4_BENCH_REVERSE_LEN 120u
+#endif
+    /* (held throughout, or let go once after 40 steps, the car stopped and stayed: so a fresh press every 20 steps,
+     * 3 let go in each) */
+    if (st >= (A4_BENCH_REVERSE) && st < (A4_BENCH_REVERSE) + (A4_BENCH_REVERSE_LEN))
+        return ((st - (A4_BENCH_REVERSE)) % 20u < 3u) ? 0u : A4_KEY_BRAKE | 0x40000u;
+#endif
     return A4_AP_KEY(st);
 }
 #endif
@@ -4652,6 +4665,12 @@ static void m1l_refresh(volatile struct glr *s)
 #ifdef A4_M1LIVE
 #error "A4_M1SKY replaces A4_M1LIVE"
 #endif
+#if (defined(A4_M1SKYFACE) || defined(A4_M1MAPCHG) || defined(A4_CARWHY)) && (defined(A4_M1SKYCEN) || defined(A4_DARKCEN) || defined(A4_OBJMODECEN) || defined(A4_F40CEN))
+#error "A4_M1SKYFACE / A4_M1MAPCHG use CRK1 [40..47] (and TIM2 [50..55]), as those censuses do"
+#endif
+#if defined(A4_M1SKYFACE) && defined(A4_M1MAPCHG)
+#error "A4_M1SKYFACE and A4_M1MAPCHG share CRK1 [40..45]"
+#endif
 #if !defined(A4_GPUSKY) || !defined(A4_GPUCAR) || !defined(A4_CARANIM) || !defined(A4_PHTIMERS)
 #error "A4_M1SKY: the GPU's sky and cars (A4_GPUSKY, A4_GPUCAR, A4_CARANIM's bake), TIM2 (A4_PHTIMERS)"
 #endif
@@ -4689,6 +4708,9 @@ static uint32_t m1s_upload(uint32_t id, const uint32_t *ts, const uint16_t *map2
             const uint32_t r5 = t >> 11, g6 = (t >> 5) & 63u, b5 = t & 31u;
             const uint32_t a = !t ? 0u : map2[i] ? 0x80u : 0xFFu;
             conv[nrow * w + x] = ((r5 << 3) | (r5 >> 2)) | ((g6 << 2) | (g6 >> 4)) << 8 | ((b5 << 3) | (b5 >> 2)) << 16 | a << 24;
+#ifdef A4_M1STINT
+            if (a == 0x80u) conv[nrow * w + x] = 0x8000FF00u;   /* bench (round 88): the paint's reflecting texels green */
+#endif
         }
         nrow++;
         if ((nrow + 1u) * w > 5120u || y == h - 1u) {
@@ -7368,6 +7390,30 @@ static void m1s_corners(volatile struct m1sky *S, const struct gcmesh *me, uint3
         for (uint32_t o = me->gs[k]; o < (uint32_t)me->gs[k] + me->gc[k]; o++) {
             const int16_t *r = rec + 18u * o;
             struct m1fit F;
+#ifdef A4_M1SKYFACE
+            {   /* bench: every face on the paint -- TIM2 [50] its centre at z > 0, [51] z < 0, [52] x > 0, [53] x < 0, [54]
+                 * its normal's z > 0, [55] < 0; CRK1 [46] the paint's faces' z extent (min | max << 16, biased 32768),
+                 * [47] x's (with CRK1 [40..45] below: the same for those that reflect) */
+                const int64_t ax = r[6] - r[0], ay = r[7] - r[1], az = r[8] - r[2];
+                const int64_t bx = r[12] - r[0], by = r[13] - r[1];
+                const int64_t nz = ax * by - ay * bx;
+                const int32_t cz = r[2] + r[8] + r[14], cx = r[0] + r[6] + r[12];
+                if (cz > 0) T[50]++; else if (cz < 0) T[51]++;
+                if (cx > 0) T[52]++; else if (cx < 0) T[53]++;
+                if (nz > 0) T[54]++; else if (nz < 0) T[55]++;
+                volatile uint32_t *Cr = crk_get();
+                for (uint32_t cn = 0; cn < 3u; cn++)
+                    for (uint32_t a = 0; a < 2u; a++) {
+                        const uint32_t vv = (uint32_t)(r[6u * cn + (a ? 0u : 2u)] + 32768);
+                        uint32_t lo = Cr[46u + a] & 0xFFFFu, hi = Cr[46u + a] >> 16;
+                        if (!Cr[46u + a]) { lo = 0xFFFFu; hi = 0; }
+                        if (vv < lo) lo = vv;
+                        if (vv > hi) hi = vv;
+                        Cr[46u + a] = lo | hi << 16;
+                    }
+                (void)az;
+            }
+#endif
             /* the box first (most of a paint's faces reflect nowhere: 508 of the Veyron's 564), then inside the face */
             if (!m1s_scan(px16, map2, w, h, r, 0, 0, &F)) continue;   /* not in the second pass */
             const int in = m1s_scan(px16, map2, w, h, r, 1, 0, &F) != 0;
@@ -7406,6 +7452,19 @@ static void m1s_corners(volatile struct m1sky *S, const struct gcmesh *me, uint3
                 scr[2u * (3u * o + cn)] = (int16_t)x; scr[2u * (3u * o + cn) + 1u] = (int16_t)y;
                 ix[ni++] = (uint16_t)(3u * o + cn);
             }
+#ifdef A4_M1SKYFACE
+            {   /* bench (round 88, after r91c: no reflection on the front windshield in reverse): the listed faces --
+                 * CRK1 [40] centre z > 0, [41] z < 0, [42] x > 0, [43] x < 0, [44] normal z > 0, [45] < 0 */
+                const int64_t ax = r[6] - r[0], ay = r[7] - r[1];
+                const int64_t bx = r[12] - r[0], by = r[13] - r[1];
+                const int64_t nz = ax * by - ay * bx;
+                const int32_t cz = r[2] + r[8] + r[14], cx = r[0] + r[6] + r[12];
+                volatile uint32_t *Cr = crk_get();
+                if (cz > 0) Cr[40]++; else if (cz < 0) Cr[41]++;
+                if (cx > 0) Cr[42]++; else if (cx < 0) Cr[43]++;
+                if (nz > 0) Cr[44]++; else if (nz < 0) Cr[45]++;
+            }
+#endif
 #ifdef A4_M1SKYCEN
             /* bench: [48] reflecting faces | fitted from their box's texels << 16, [50] the corners' interpolation off
              * the map (px, |dx| + |dy|) summed over [51] the texels inside the faces, [52] the most texels in a box */
@@ -7456,6 +7515,19 @@ static uint32_t m1s_will(const struct gcmesh *me, const uint16_t *m1map, const u
     for (uint32_t k = 0; k < me->ng && !d; k++)
         if ((me->gm1[k] & 1u) && !(me->gm1[k] & 2u) && m1s_paint(me->gd[k], m1tab)) d = me->gd[k];
     if (!d || ((!S->ready || S->desc != d) && !m1map)) return 0;
+#ifdef A4_M1MAPCHG
+    if (m1map) {   /* bench (round 88, after r91c: no reflection on the front windshield in reverse): is the paint's map
+                    * the same every frame? CRK1 [40] the map pointer, [41] its changes, [42] a sample hash (every 61st
+                    * texel's M), [43] its changes, [44] the frame of the last change, [45] texels with M != 0 sampled */
+        volatile uint32_t *Cr = crk_get();
+        const uint32_t n = (GO32(d + 4u) + 1u) * (GO32(d + 8u) + 1u);
+        uint32_t hsh = 2166136261u, nz = 0;
+        for (uint32_t i = 0; i < n; i += 61u) { hsh = (hsh ^ m1map[i]) * 16777619u; nz += m1map[i] != 0; }
+        if (Cr[40] != (uint32_t)(uintptr_t)m1map) { if (Cr[40]) Cr[41]++; Cr[40] = (uint32_t)(uintptr_t)m1map; Cr[44] = S->ncomp; }
+        if (Cr[42] != hsh) { if (Cr[42]) Cr[43]++; Cr[42] = hsh; Cr[44] = S->ncomp; }
+        Cr[45] = nz;
+    }
+#endif
     S->want = ((volatile struct glr *)A4_GL_SCRATCH)->frames;   /* this frame's composite captured for the next */
     return d;
 }
@@ -7787,11 +7859,34 @@ void a4_car_earlycheck(uint32_t cam)
     else if (g->carlate == 1u) C[42]++;
 }
 #endif
+#ifdef A4_CARNEARBOX
+/* the view-space z of the mesh box's nearest corner (gitem_box's transform: z = (R[2] x + R[5] y + R[8] z) >> 14 + T[2];
+ * each axis's larger product, since the floor of the largest sum is the largest of the corners' floors) */
+static int32_t gcar_box_near(const int32_t *M, const int16_t *bnd)
+{
+    int64_t sum = 0;
+    for (uint32_t a = 0; a < 3u; a++) {
+        const int64_t lo = (int64_t)M[2u + 3u * a] * bnd[a], hi = (int64_t)M[2u + 3u * a] * bnd[3u + a];
+        sum += lo > hi ? lo : hi;
+    }
+    return (int32_t)(sum >> 14) + M[11];
+}
+#endif
 static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t mode, uint32_t nobf,
                          uint32_t lr, int early)
 {
     const uint32_t gb = gcar_gbase();
     if (lr != gb + 0x34B17u) return 0;                     /* a CBasicMesh: the cars */
+#ifdef A4_CARWHY
+    /* bench (round 88, after r91c: in reverse the player's car is the game's, not the GPU's): for the mesh A4_M1SKY
+     * registered (the player's), CRK1 [40] early calls, [41] late calls, [42] refused mode/off, [43] range, [44] no mesh,
+     * [45] near plane, [46] early and not certainly inside (left to the late take), [47] its box (A4_CLIPG) or drawn */
+    const int why_me = M1S->mi && verts == M1S->verts;
+#define WHY(n) do { if (why_me) crk_get()[40u + (n)]++; } while (0)
+    WHY(early ? 0u : 1u);
+#else
+#define WHY(n) do { } while (0)
+#endif
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     volatile struct gstate *g = GOBJ;
     volatile struct gcstate *c = GCAR;
@@ -7804,7 +7899,7 @@ static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t fac
         c->magic = GCAR_MAGIC; c->frame = 0xFFFFFFFFu;
     }
     if ((A4_PERF[PF_MODE] & (AB_MESH | AB_LEAN | AB_DEFER)) != (AB_MESH | AB_LEAN)
-        || s->up != A4_GL_MAGIC || !s->zbits || !s->abits || !MESH->gctx) { c->refused_mode++; return 0; }
+        || s->up != A4_GL_MAGIC || !s->zbits || !s->abits || !MESH->gctx) { c->refused_mode++; WHY(2u); return 0; }
     if (g->frame != s->frames) {                           /* the frame's first object or car: as a4_obj_take */
         if (s->frames - g->frame > 64u && g->nmesh) { g->full = 1; g->gaps++; }
         g->frame = s->frames; g->n = 0; g->drawn = 0;
@@ -7814,25 +7909,35 @@ static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t fac
         if (g->full) { gobj_clear(g); g->resets++; }
     }
     if (c->frame != s->frames) { c->frame = s->frames; c->n = 0; }
-    if (g->drawn || c->n >= GCAR_NI) { c->refused_drawn++; return 0; }
+    if (g->drawn || c->n >= GCAR_NI) { c->refused_drawn++; WHY(7u); return 0; }
 #ifdef A4_GOBJ_AB
     if ((s->frames >> (A4_GOBJ_AB)) & 1u) { c->refused_mode++; return 0; }
 #endif
-    if (nobf || mode == 0u || mode > 7u || nv == 0u || nv > 1024u || nf == 0u || nf > 2048u) { c->refused_mode++; return 0; }
+    if (nobf || mode == 0u || mode > 7u || nv == 0u || nv > 1024u || nf == 0u || nf > 2048u) { c->refused_mode++; WHY(2u); return 0; }
     const uint32_t mp = GO32(cam + 0x3Cu);
-    if (!mp) { c->refused_mode++; return 0; }
+    if (!mp) { c->refused_mode++; WHY(2u); return 0; }
     const int32_t *M = (const int32_t *)mp;
-    if (go_iabs(M[9]) > 32000 || go_iabs(M[10]) > 32000 || go_iabs(M[11]) > 32000) { c->refused_range++; return 0; }
+    if (go_iabs(M[9]) > 32000 || go_iabs(M[10]) > 32000 || go_iabs(M[11]) > 32000) { c->refused_range++; WHY(3u); return 0; }
     const uint32_t w1 = GO32(GO32(gb + 0x34DD4u) + 8u * mode + 4u);   /* the mode's class word (+349F8's [sp+4]) */
     struct gcmesh *me = gcar_mesh(g, c, verts, nv, faces, nf, w1);
-    if (!me) return 0;
-    if (M[11] + (int32_t)me->rad + 2 > -(ZK + 4)) { c->refused_near++; return 0; }   /* the list's near plane */
+    if (!me) { WHY(4u); return 0; }
+#ifdef A4_CARNEARBOX
+    /* round 88, after r91c (the owner: no reflection on the front windshield in reverse): the near-plane test on the
+     * mesh's box, not its sphere. Reversing, the camera sits at the car's front, close enough that the sphere reached
+     * the near plane though no vertex did (rvw: 361 refusals in the reverse stretch, none in the chase view) -- the
+     * game drew the car then, with the paint baked once, so A4_M1SKY's live reflection never ran. The box is GCBND's
+     * (grown with the animated corners at every take, gca_refresh) through gitem_box's own transform: its nearest
+     * corner is the nearest any vertex can be, so the GPU's near plane still cuts nothing. */
+    if (gcar_box_near(M, GCBND[me - GCMESH]) + 2 > -(ZK + 4)) { c->refused_near++; WHY(5u); return 0; }
+#else
+    if (M[11] + (int32_t)me->rad + 2 > -(ZK + 4)) { c->refused_near++; WHY(5u); return 0; }   /* the list's near plane */
+#endif
     if (early) {                                            /* round 86: taken before the transform only if certain */
         const int in = gcar_inside(cam, M, me->rad);
 #ifdef A4_CAREARLYCHECK
         g->carlate = in ? 2u : 1u; return 0;
 #else
-        if (!in) { g->carlate = 1u; return 0; }
+        if (!in) { g->carlate = 1u; WHY(6u); return 0; }
 #endif
     }
     volatile struct gcitem *it = &c->it[c->n++];
@@ -7844,11 +7949,12 @@ static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t fac
         if (gb) {
 #ifdef A4_CLIPG
             volatile uint32_t *C = crk_get();
-            c->n--; C[34]++; if (gb == 2) C[38]++; return 0;   /* round 82e: as an object's */
+            c->n--; C[34]++; if (gb == 2) C[38]++; WHY(7u); return 0;   /* round 82e: as an object's */
 #endif
         }
     }
     c->taken++;
+#undef WHY
     return 1;
 }
 /* the frame's cars, after the scenery and before the list: a modelview a car, a draw a group */

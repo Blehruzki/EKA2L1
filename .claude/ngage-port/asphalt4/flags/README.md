@@ -108,3 +108,14 @@ After r91b's round A4_M1SKY reads the frame itself (each composite's top rows in
 glDeleteTextures (ordinal 47) with the flag: C93 now builds the r91c candidate, sha256 eb1526dbf07bc0a0..., 1,020,896
 bytes (r91b was 539751517cf14cb7... from commit 78e4dc3). Bench only: `-DA4_M1SKYCEN`, `-DA4_M1SKYMUT` (the capture all
 white, then all black, a render each).
+
+C94.flags = C93.flags with `-DA4_CARNEARBOX` (round 88, after r91c's round: the owner, "reflections don't work when going
+reverse ... no reflections there" on the front windshield). The GPU cars' near-plane test on the mesh's box
+(GCBND, grown with the animated corners at each take) instead of its bounding sphere: reversing, the camera at the car's
+front came close enough for the sphere to reach the near plane though no vertex did, the game drew the car with the
+paint baked once, and A4_M1SKY's live reflection never ran. Same scratch (`A4_SCRATCH_SIZE=0x1C3000`). r91d candidate
+sha256 d8d6da2eea769e66..., 1,021,108 bytes; C90 / C91 / C92 / C93 rebuild to r90a's, r90b's, r91a's and r91c's bytes.
+Bench only: `-DA4_BENCH_REVERSE=<step>` (`_LEN`; with A4_CARREC, A4_AUTOPILOT and A4_AUTOPILOT_TAP: the brake from that
+step, the car reverses), `-DA4_CARWHY` (the player's car takes by outcome, CRK1 [40..47]), `-DA4_M1SKYFACE` (the paint's
+faces and the reflecting ones by half, CRK1 [40..47] / TIM2 [50..55]), `-DA4_M1MAPCHG` (the map's pointer and a sampled
+hash each render, CRK1 [40..45]), `-DA4_M1STINT` (the paint's reflecting texels green).
