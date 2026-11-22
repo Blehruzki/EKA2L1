@@ -15089,5 +15089,5 @@ b. Read back: every hunk under A4_M1HOOK; the bench's own lean_conv calls pass n
    and the texture matrix; the list is reset with the batch at the frame's clear and with the store (gobj_clear).
    C90 / C91 / C92 / C93 / C94 rebuild to r90a's, r90b's, r91a's, r91c's and r91d's bytes with the code in the tree.
 c. Not entered by the bench before: the game's own paint triangles as var 3 with the second pass (hkt, h95, mk_c95,
-   rv95, the exact binary), the CLIPG pieces' barycentric points (code read; no piece of a reflecting face counted in
-   these runs -- named), a paint left out for having no texel to reflect (duc95), the garage (gar_95).
+   rv95, the exact binary), the CLIPG pieces' barycentric points (code read only; how often a reflecting face is cut was
+   not counted -- named), a paint left out for having no texel to reflect (duc95), the garage (gar_95).
