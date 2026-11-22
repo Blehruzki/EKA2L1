@@ -15065,3 +15065,29 @@ c. Not entered by the bench before: cars the sphere refused and the box takes --
   var 3, no pass, no capture and no table; its paint stays var 1, which with every M 0 is T itself (m1_texel), as
   stock draws it. The hook asks for a capture only for a reflecting face. C90-C94 rebuild to their bytes again; the r91e
   candidate is this build (a4_r91e_cand.exe, sha256 992b6b369dc1c7b9..., 1,026,300 bytes); bat95 runs on it.
+- **bat95 on the r91e candidate** (a4_r91e_cand.exe = this build, sha256
+  992b6b369dc1c7b961b9357ff2064f966390d81e892ff7bd465af7abc808ad3a, 1,026,300 bytes, no 0xDEADBEEF): at95 (six maps 45 s)
+  framestat 5,641 (at94 5,645); m95 (Instant Play 300 s, 7 C marks) 2,314 (m94 2,386; earlier runs 2,312-2,422); pa95
+  (Paris 400 s, 7 marks) 3,560 (pa94 3,587); the boot fault only in each. rv95 (the Mini reversing, C marks every 5th tap,
+  16 shots held in reverse): the windshield and roof windows carry the verge's trees, ~145 paint triangles a render
+  matched, ~68 reflecting, one second pass a render, 0 unmatched. rvv95 (the Veyron reversing): the GPU car's pass two a
+  render as in r91d, the windshield reflecting; the hook's path 0.7 paint triangles a render (the moments the car comes
+  nearer than the plane). duc95 (the Ducati): no capture, no pass, no point table; the bike drawn as before. gar_95 /
+  gar_r91d (the same menu path, posts 250-699): 361 of r91d's 450 posts have a byte-identical post in r91e's run, every
+  garage post among them ("CHOOSE YOUR RIDE", 380-500); the rest are the race's load (575 on), timing.
+
+Rule 4, before r91e goes out (A4_M1HOOK):
+a. Guesses, each settled or named: (1) the hook's texture points are the face records' own -- settled: 0 of ~100,000
+   paint triangles matched no face across mk_c95 / rv95; (2) the map is the same every render -- rmc (round 88): 0
+   changes, reverse included; (3) the dst-alpha gate gives the reflection to the reflecting texels only and once --
+   the second pass is m1s_pass's state on the batch's own corners and depth; the result matches stock's (h95 / s95);
+   (4) named, not fixed: a blended particle (KIND_ALPHA) drawn over the windshield later in the same batch, before its
+   second pass, is weighted by alpha 0x80 (half strength); (5) named: a paint triangle the game cut at its own near
+   plane matches no face and stays var 1 (0 in these runs); (6) the Ducati's paint: its texels have no M, so var 1 is
+   T itself -- m1_texel returns T for M 0.
+b. Read back: every hunk under A4_M1HOOK; the bench's own lean_conv calls pass no slot; m1h_pass restores the arrays
+   and the texture matrix; the list is reset with the batch at the frame's clear and with the store (gobj_clear).
+   C90 / C91 / C92 / C93 / C94 rebuild to r90a's, r90b's, r91a's, r91c's and r91d's bytes with the code in the tree.
+c. Not entered by the bench before: the game's own paint triangles as var 3 with the second pass (hkt, h95, mk_c95,
+   rv95, the exact binary), the CLIPG pieces' barycentric points (code read; no piece of a reflecting face counted in
+   these runs -- named), a paint left out for having no texel to reflect (duc95), the garage (gar_95).
