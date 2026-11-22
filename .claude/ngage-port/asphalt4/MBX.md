@@ -15113,3 +15113,8 @@ c. Not entered by the bench before: the game's own paint triangles as var 3 with
   forward and reversing, and no low-detail mesh was drawn for the player in these races. Not covered by this check:
   cars the save does not unlock (the F430 among them) and camera views these runs did not reach (replays).
   C90-C95 rebuild to their bytes with the two bench switches in the tree (C95 = the r91e candidate).
+- **r91e sent** (the owner: "send it"): a4_r91e_cand.exe, unbaked, sha256
+  992b6b369dc1c7b961b9357ff2064f966390d81e892ff7bd465af7abc808ad3a, 1,026,300 bytes (C95; the same bytes as C95 rebuilt
+  with the bench switches in the tree). The owner bakes it. What the round reads: the windshield reversing (the Mini and
+  any other car), against the original's look; the frame rate reversing (~1.1 ms a render more than r91d there: the
+  capture, as the chase view's).
