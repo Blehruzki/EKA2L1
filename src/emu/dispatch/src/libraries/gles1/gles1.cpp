@@ -28,6 +28,10 @@
 #include <kernel/kernel.h>
 
 #include <cstdint>
+#include <cstdlib>
+#include <cstdio>
+#include <chrono>
+#include <algorithm>
 #include <vector>
 
 namespace eka2l1::dispatch {
@@ -2875,6 +2879,89 @@ namespace eka2l1::dispatch {
         return arr;
     }
 
+    // EKA2L1_GLTEXCEN=1 (ngage-port, Asphalt 4 round 88: how many of a frame's textured draws could share one texture
+    // sheet): each textured draw's unit-0 coordinates over its vertex range, through the texture matrix, all inside
+    // [0, 1] (a hair's slack) or not. Consecutive inside draws make a run -- what one sheet could merge, other state
+    // aside; an untextured or outside draw ends it. A frame ends at the first draw after a glReadPixels. A line every
+    // ~5 s, per frame: textured draws, inside draws, runs, textures bound, textures of inside draws, vertices and
+    // inside vertices; draws whose coordinates it cannot read (a buffer object, an odd type) apart.
+    namespace {
+        struct gles_texcen {
+            bool on = false, read = false, last_inside = false;
+            std::uint64_t frames = 0, draws = 0, inside = 0, runs = 0, verts = 0, iverts = 0, unread = 0, texs = 0, itexs = 0, plain = 0;
+            std::vector<std::uint32_t> ftex, fitex;
+            std::chrono::steady_clock::time_point last = std::chrono::steady_clock::now();
+            gles_texcen() { const char *e = std::getenv("EKA2L1_GLTEXCEN"); on = e && *e == '1'; }
+            static std::uint64_t distinct(std::vector<std::uint32_t> &v) {
+                std::sort(v.begin(), v.end());
+                const std::uint64_t n = static_cast<std::uint64_t>(std::unique(v.begin(), v.end()) - v.begin());
+                v.clear();
+                return n;
+            }
+            void frame_end() {
+                if (ftex.empty() && fitex.empty() && !plain) return;
+                texs += distinct(ftex); itexs += distinct(fitex); frames++;
+                const auto now = std::chrono::steady_clock::now();
+                if (now - last >= std::chrono::seconds(5) && frames) {
+                    const double f = static_cast<double>(frames);
+                    std::fprintf(stderr, "EKA2L1_GLTEXCEN: %llu frames; a frame: %.1f textured draws, %.1f inside [0,1] in %.1f runs, %.1f untextured, "
+                        "%.1f textures (%.1f of inside draws), %.0f vertices (%.0f inside), %.1f draws unread\n",
+                        (unsigned long long)frames, draws / f, inside / f, runs / f, plain / f, texs / f, itexs / f, verts / f, iverts / f, unread / f);
+                    frames = draws = inside = runs = verts = iverts = unread = texs = itexs = plain = 0;
+                    last = now;
+                }
+            }
+        };
+        gles_texcen g_texcen;
+    }
+
+    void gles_texcen_read_mark() {
+        g_texcen.read = true;
+    }
+
+    static void gles_texcen_draw(egl_context_es1 *ctx, kernel::process *crr_process, const std::int32_t first_index,
+        const std::uint32_t vcount, const std::uint32_t active) {
+        gles_texcen &c = g_texcen;
+        if (c.read) { c.read = false; c.frame_end(); c.last_inside = false; }
+        const bool textured = (active & 1u) && (ctx->vertex_statuses_ & egl_context_es1::VERTEX_STATE_CLIENT_TEXCOORD0_ARRAY);
+        if (!textured) { c.plain++; c.last_inside = false; return; }
+        const gles1_texture_unit &u = ctx->texture_units_[0];
+        const gles_vertex_attrib &a = u.coord_attrib_;
+        c.draws++; c.verts += vcount; c.ftex.push_back(u.binded_texture_handle_);
+        const std::uint32_t type = a.data_type_;
+        if (a.buffer_obj_ != 0 || a.size_ < 2 || (type != 0x1400 && type != 0x1401 && type != 0x1402 && type != 0x140C && type != 0x1406)) {
+            c.unread++; c.last_inside = false; return;
+        }
+        const std::uint32_t esz = (type == 0x1400 || type == 0x1401) ? 1u : (type == 0x1402 ? 2u : 4u);
+        const std::uint32_t stride = a.stride_ ? static_cast<std::uint32_t>(a.stride_) : esz * static_cast<std::uint32_t>(a.size_);
+        const glm::mat4 &m = u.texture_mat_stack_.top();
+        bool in = true;
+        for (std::uint32_t i = 0; i < vcount && in; i++) {
+            const std::uint32_t addr = a.offset_ + stride * (static_cast<std::uint32_t>(first_index) + i);
+            float sv[2];
+            for (int k = 0; k < 2; k++) {
+                const std::uint32_t ea = addr + esz * static_cast<std::uint32_t>(k);
+                if (type == 0x1402) { const std::int16_t *q = eka2l1::ptr<std::int16_t>(ea).get(crr_process); if (!q) { in = false; break; } sv[k] = *q; }
+                else if (type == 0x1400) { const std::int8_t *q = eka2l1::ptr<std::int8_t>(ea).get(crr_process); if (!q) { in = false; break; } sv[k] = *q; }
+                else if (type == 0x1401) { const std::uint8_t *q = eka2l1::ptr<std::uint8_t>(ea).get(crr_process); if (!q) { in = false; break; } sv[k] = *q; }
+                else if (type == 0x140C) { const std::int32_t *q = eka2l1::ptr<std::int32_t>(ea).get(crr_process); if (!q) { in = false; break; } sv[k] = *q / 65536.0f; }
+                else { const float *q = eka2l1::ptr<float>(ea).get(crr_process); if (!q) { in = false; break; } sv[k] = *q; }
+            }
+            if (!in) break;
+            float s = m[0][0] * sv[0] + m[1][0] * sv[1] + m[3][0], t = m[0][1] * sv[0] + m[1][1] * sv[1] + m[3][1];
+            const float qw = m[0][3] * sv[0] + m[1][3] * sv[1] + m[3][3];
+            if (qw != 0.0f && qw != 1.0f) { s /= qw; t /= qw; }
+            if (s < -0.001f || s > 1.001f || t < -0.001f || t > 1.001f) in = false;
+        }
+        if (in) {
+            c.inside++; c.iverts += vcount; c.fitex.push_back(u.binded_texture_handle_);
+            if (!c.last_inside) c.runs++;
+            c.last_inside = true;
+        } else {
+            c.last_inside = false;
+        }
+    }
+
     bool egl_context_es1::prepare_for_draw(drivers::graphics_driver *drv, egl_controller &controller, kernel::process *crr_process,
         const std::int32_t first_index, const std::uint32_t vcount)  {
         if ((vertex_statuses_ & egl_context_es1::VERTEX_STATE_CLIENT_VERTEX_ARRAY) == 0) {
@@ -2905,6 +2992,8 @@ namespace eka2l1::dispatch {
             }
         }
         std::uint32_t active_textures_bitarr = retrieve_active_textures_bitarr(this);
+        if (g_texcen.on)
+            gles_texcen_draw(this, crr_process, first_index, vcount, active_textures_bitarr);
         prepare_vertex_buffer_and_descriptors(drv, crr_process, first_index, vcount, active_textures_bitarr);
 
         flush_state_changes();

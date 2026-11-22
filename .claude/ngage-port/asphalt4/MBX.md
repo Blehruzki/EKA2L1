@@ -14983,3 +14983,27 @@ c. Not entered by the bench before: cars the sphere refused and the box takes --
 - **r91d sent** (the owner: "send it"): a4_r91d_cand.exe, unbaked, sha256
   d8d6da2eea769e666ec53939bf98baa7b7f82a73cea06aac58d5809d1db9e80c, 1,021,108 bytes. The owner bakes it. What the round
   reads: the front windshield reflecting while reversing (the owner's eye), the renders against r91c's.
+
+### The ceilings' firm-up (the owner: "send it then start on the firm-up")
+- **Noise** (cl_base2: r91c, the same Paris 400 s as cl_base): by 10-segment bin, unboosted, the two runs of one binary
+  differ by 0.2-1.9 ms a render (bins 0-40, 100-130), 2.7 ms where the route drew fewer objects (bin 120: 117 draws
+  against 134). So cl_call's -2.2 in segments 0-29 is within the noise; the -5 to -9 ms of the others are not.
+- **The GPU wait, again** (cl_gpuw2, the tile render 0 in the model; this route reached Montmartre): the read falls
+  3.1-3.4 ms in every bin (6.0-6.8 -> 2.9-3.4, against both baselines), but the 3D rises 1-2 ms, so the render drops
+  only ~1-2 ms in segments 0-30 and 2.8-5.4 ms in 40 and 100-120. The rise is the bench's: **with the tile render's
+  sleep gone, the host falls 2.3-2.8% behind the model in the race (cl_gpuw, cl_gpuw2, cl_all) against 0.2-0.5% in
+  every other run** -- the host's own GL (llvmpipe) no longer finishes inside the modelled wait and surfaces at the next
+  draws. So the bench cannot price this ceiling cleanly; **the measure is the wait itself: 3.1-3.4 ms on the model, and
+  on the phone the first strip's 5.5-6.5 ms (r90b, FRC4)**.
+- **The texture sheets** (txc: EKA2L1_GLTEXCEN, new, emulator -- EMU_PATCHES.md; r91c, Paris 400 s, 2,722 race
+  frames): a frame **123.3 textured draws, 81.0 (66%) with every coordinate inside one copy of the texture**, in 21.5
+  runs of consecutive such draws; 12.3 untextured; 45.8 textures bound (26.8 of them by the inside draws); 15,392
+  vertices, 45% in inside draws. Round 23's "66% of triangles inside [0, 1]" holds for today's renderer by draws.
+  **One sheet for the inside draws could take a frame from 135.5 draws to 76.1 at most (44% fewer; 154 -> 86 in the
+  heavy windows)** -- before the other state (blend, depth, alpha test) splits the runs further. At the model's 20 us
+  a draw + 8 a bind that is ~1.7 ms; at the phone's ~47 us fit ~2.8 ms. Not bit-exact (round 24), ~4 MB.
+- **Revised, on measured ground** (Montmartre, the phone's 55.7 ms): the GPU wait 5.5-6.5 ms measured on the phone,
+  hidden only by drawing the next frame meanwhile (the 3D a frame late against the game's software parts); the copy
+  ~2.5 + the convert ~2.4-2.8 measured on the phone, a fused pass saving ~2-3; one texture sheet ~1.5-3. Together
+  ~8-12 ms: **Montmartre ~44-48 ms (~21-23 fps), lighter scenes ~24-26 fps**. The runs' noise is ~1-2 ms a segment.
+  30 fps still needs the game's own work cut (the rest ~19 ms on the phone).

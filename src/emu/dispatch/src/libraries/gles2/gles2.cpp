@@ -2752,6 +2752,7 @@ APPLY_PENDING_ROUTES:
         // glReadPixels is valid from an ES1.1 context too (it has no user FBOs,
         // so it always reads the bound surface). Resolve the active context
         // generically and only take the FBO path for ES2.
+        gles_texcen_read_mark();
         egl_context_es_shared *ctx = get_es_shared_active_context(sys);
         if (!ctx) {
             return;

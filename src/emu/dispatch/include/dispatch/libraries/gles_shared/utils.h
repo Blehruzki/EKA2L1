@@ -23,6 +23,9 @@
 #include <cstdint>
 
 namespace eka2l1::dispatch {
+    // EKA2L1_GLTEXCEN (gles1.cpp): a glReadPixels ends the census's frame
+    void gles_texcen_read_mark();
+
     struct gles_vertex_attrib;
 
     bool convert_gl_factor_to_driver_enum(const std::uint32_t value, drivers::blend_factor &dest);
