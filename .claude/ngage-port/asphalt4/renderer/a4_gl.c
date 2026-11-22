@@ -4421,6 +4421,10 @@ static uint32_t tex_upload(uint32_t id, const uint32_t *ts, uint32_t tr, int all
 #ifdef A4_M1TINT
             if (map2 && t16) t16 = 0xF81Fu;          /* bench: a mode-1 bake's texels solid magenta (key kept) */
 #endif
+#ifdef A4_M1TINTR
+            if (map2 && t16 && map2[i]) t16 = 0xF81Fu;   /* bench (round 89): a bake's REFLECTING texels magenta -- a
+                                                          * reflection drawn from the bake, not the live pass */
+#endif
             conv[nrow * w + x] = tr ? (uint16_t)((t16 & 0xF800) | (((t16 >> 6) & 0x1F) << 6)
                                                  | ((t16 & 0x1F) << 1) | (px16[i] ? 1u : 0u))
                                     : (uint16_t)t16;
@@ -4670,6 +4674,10 @@ static void m1l_refresh(volatile struct glr *s)
 #endif
 #if (defined(A4_M1SKYFACE) || defined(A4_M1MAPCHG) || defined(A4_CARWHY)) && (defined(A4_M1SKYCEN) || defined(A4_DARKCEN) || defined(A4_OBJMODECEN) || defined(A4_F40CEN))
 #error "A4_M1SKYFACE / A4_M1MAPCHG use CRK1 [40..47] (and TIM2 [50..55]), as those censuses do"
+#endif
+#if defined(A4_M1PDCEN) && (defined(A4_M1SKYFACE) || defined(A4_M1MAPCHG) || defined(A4_CARWHY) || defined(A4_M1SKYCEN) \
+    || defined(A4_DARKCEN) || defined(A4_OBJMODECEN) || defined(A4_F40CEN) || !defined(A4_M1HOOK))
+#error "A4_M1PDCEN (A4_M1HOOK's paints) counts in CRK1 [40..47], as these censuses do"
 #endif
 #if defined(A4_M1SKYFACE) && defined(A4_M1MAPCHG)
 #error "A4_M1SKYFACE and A4_M1MAPCHG share CRK1 [40..45]"
@@ -7631,6 +7639,29 @@ static void m1s_pd(volatile struct m1sky *S, const struct gcmesh *me, const uint
         if (i < t) S->pd[n++] = d;
     }
     S->np = n | 0x100u;
+#ifdef A4_M1PDCEN
+    {   /* bench (round 89, the owner: "Are you sure the effect will apply to all vehicles ... player's cars"): the player's
+         * mesh's mode-1 groups with a texel to reflect, each made registration -- CRK1 [42] tables of paints made, [43]
+         * such groups, [44] of them in the pass (pd), [45] left out for their size, [46] left out as animated, [47] left
+         * out past three (low byte) | the last left out's w << 8 | h << 20 */
+        volatile uint32_t *C = crk_get();
+        C[42]++;
+        for (uint32_t k = 0; k < me->ng; k++) {
+            if (!(me->gm1[k] & 1u)) continue;
+            const uint32_t d = GC_GD(me, k), w = GO32(d + 4u) + 1u, h = GO32(d + 8u) + 1u, t = w * h;
+            const uint16_t *px16 = (const uint16_t *)GO32(d + 4u * TS_PIX);
+            uint32_t i = 0;
+            if (px16) while (i < t && !(px16[i] && map[i])) i++;
+            if (!px16 || i == t) continue;
+            C[43]++;
+            if (!(me->gm1[k] & 2u) && m1s_inpd(S, d)) { C[44]++; continue; }
+            if (me->gm1[k] & 2u) C[46]++;
+            else if (!m1s_big(d)) C[45]++;
+            else C[47] = ((C[47] & 0xFFu) + 1u) & 0xFFu;
+            C[47] = (C[47] & 0xFFu) | (w & 0xFFFu) << 8 | (h & 0xFFFu) << 20;
+        }
+    }
+#endif
 }
 #endif
 /* the paint this car's second pass reflects on (its mode-1 groups drawn from it as var 3), or 0: none this frame */
@@ -7890,6 +7921,21 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
 #ifdef A4_M1HOOK
     if (xs && nf < 0xFFFFu) xs += M1H_REC;          /* round 89: the faces' hash, the batch's points and list (m1h_*) */
     else xs = 0;
+#endif
+#ifdef A4_M1PDCEN
+    if (acar) {   /* bench: CRK1 [40] the player's meshes built | of them registered for the pass << 16, [41] those with a
+                   * mode-1 face but not registered (no big paint: a low-detail mesh?) */
+        volatile uint32_t *C = crk_get();
+        C[40] += xs ? 0x10001u : 1u;
+        if (!xs) {
+            uint32_t any = 0;
+            for (uint32_t f = 0; f < nf && !any; f++) {
+                const uint32_t fl = GO32(faces + 52u * f + 4u);
+                any = ((fl & 0x4100000u) ? w1 : (w1 & ~0x4100000u)) == 0x104000u;
+            }
+            if (any) C[41]++;
+        }
+    }
 #endif
 #else
     const uint32_t xs = 0;

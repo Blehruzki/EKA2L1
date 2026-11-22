@@ -15091,3 +15091,25 @@ b. Read back: every hunk under A4_M1HOOK; the bench's own lean_conv calls pass n
 c. Not entered by the bench before: the game's own paint triangles as var 3 with the second pass (hkt, h95, mk_c95,
    rv95, the exact binary), the CLIPG pieces' barycentric points (code read only; how often a reflecting face is cut was
    not counted -- named), a paint left out for having no texel to reflect (duc95), the garage (gar_95).
+
+### Every player car (the owner: "Are you sure the effect will apply to all vehicles if they have a reflective surface like a window or windshield?" -- "I meant player's cars")
+- What could still miss: a reflective part (mode-1, a texel with M != 0) on a texture A4_M1HOOK leaves out (under 16K
+  texels or over 256 a side, an animated group, a fourth paint), or the car's low-detail mesh (each car's `_l` texture,
+  128x64, a whole low-detail copy with its windows) drawn for the player. And four cars never run.
+- A4_M1PDCEN (new, bench): CRK1 [40] the player's meshes built | registered << 16, [41] built with a mode-1 face but not
+  registered (a low-detail mesh would land here), [42] paint lists made, [43] mode-1 groups with a texel to reflect,
+  [44] of them in the pass, [45] left out for size, [46] as animated, [47] past three | the last one's size.
+  A4_M1TINTR (new, bench): a bake's reflecting texels magenta (where a reflection is drawn from a bake, not live).
+- cen7 (C95 + A4_M1STINT + A4_M1TINTR + A4_M1PDCEN; each unlocked car in turn, LA, '5' 60 s, '6' tapped 60 s with C
+  marks, 24 shots each, reverse included):
+  Veyron, Mini, 350Z, SLK55, M3, Corvette -- each **one player mesh, registered; one mode-1 group with a texel to
+  reflect, in the pass; none left out (size, animated, past three: 0); no mode-1 mesh of the player's unregistered**;
+  green (the live pass) in all 24 shots, **magenta in none**; in reverse every front windshield green (cen_rev2-4).
+  Ducati -- 16 meshes built and registered in the race (the animated mesh re-made), **0 groups with a texel to
+  reflect**: nothing to do, as stock; no magenta (the 7x11 px green in 4 shots is the minimap's marker).
+- The detector's own test (ctl_mini: C94 + A4_M1STINT + A4_M1TINTR, the Mini reversing): **magenta in 17 of 25 shots**
+  (~13,000 px in the reverse view) -- r91d's bake, as the owner's video showed. So none in cen7 means none there.
+- So, on the seven cars the owner's save unlocks: every reflective part of the player's car takes the live reflection,
+  forward and reversing, and no low-detail mesh was drawn for the player in these races. Not covered by this check:
+  cars the save does not unlock (the F430 among them) and camera views these runs did not reach (replays).
+  C90-C95 rebuild to their bytes with the two bench switches in the tree (C95 = the r91e candidate).

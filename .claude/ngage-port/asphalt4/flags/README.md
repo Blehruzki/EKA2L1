@@ -130,3 +130,5 @@ mode-1 paint of the player's mesh now takes part (a bike's second texture), not 
 (`A4_SCRATCH_SIZE=0x1C3000`); the arena gives the registration ~19 KB more (the hash, the batch's points and list).
 C90 / C91 / C92 / C93 / C94 rebuild to r90a's, r90b's, r91a's, r91c's and r91d's bytes. Telemetry: TIM2 [37] paint
 triangles matched, [38] of them reflecting, [39] second passes, [59] paint triangles matching no face (frec3.py timers).
+Bench only: `-DA4_M1PDCEN` (the player's mesh's mode-1 groups with a texel to reflect, in the pass or left out and why,
+CRK1 [40..47]), `-DA4_M1TINTR` (a bake's reflecting texels magenta: a reflection drawn from a bake, not the live pass).
