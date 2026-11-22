@@ -14865,3 +14865,34 @@ shadow insert 1.5, +31A26/50 1.6, the post ~2.8, ~6 unnamed). 30 fps is 33.3 ms:
   kept: what drawing the next frame while the GPU renders this one could save at most); cl_call (draw_us and bind_us
   0: what merging draws could save at most); cl_cvcp (A4_CEIL_CVT + A4_CEIL_COMP: no present convert and no composite
   rows -- a fused pass's most); cl_all (the three together). Script ceilrun.sh (scratchpad). Running.
+- First set at 300 s (stopped): the bench's car never reached Montmartre in 300 s (segments 105-135 only); rerun at
+  400 s with marks at 60-180 s (5 a4mark files) and the ring for the rest. Routes still differ run to run (one run's
+  car stuck at segments 120-139, another never in 30-99), so the runs are compared **by 10-segment bin, unboosted
+  renders, where both runs have 20 or more** (ceilseg.py, scratchpad) -- the plain averages mislead.
+- The host keeps up (CPUCAP_STATS: ~0.2% behind in four runs) except cl_all (~3% behind all race): with every GPU
+  charge zero there is no modelled sleep left for the host's own GL (llvmpipe) to finish in, and it surfaces where the
+  frame next syncs -- **the cars' flush, 9.4-9.9 ms in cl_all against 1.0-2.2** (cl_cvcp 2.0-2.6). A bench artifact,
+  not phone time: cl_all below is given with the base's cars' flush put back.
+
+| ms a render (bench, unboosted) | segments 0-29 | Montmartre 30-49 | segments 100-119 |
+|---|---|---|---|
+| cl_base (r91c as is) | 35.4 | 40.6 / 44.6 | 44.0 |
+| cl_gpuw: no tile-render wait | -- (route) | -- (route) | 40.1 (**-3.9**; read 7.7 -> 3.2) |
+| cl_call: no per-draw/bind cost | 33.2 (**-2.2**) | 37.6 / 41.0 (**-3.0 / -3.6**) | 37.9 (**-6.1**) |
+| cl_cvcp: no convert, no composite rows | 30.6 (**-4.8**) | 35.1 / 39.4 (**-5.5 / -5.2**) | 35.0 (**-9.0**: comp -3.1, rest -4.4) |
+| cl_all, the cars' flush artifact out | ~25.9 (**-9.5**) | -- (route) | ~31.0 (**-13.0**) |
+
+- Read: the three costs together are 9.5-13 ms of a 35-44 ms bench render -- **the bench at its ceiling ~26-31 ms
+  (32-38 fps)**. The phone runs ~1.3x the bench (Montmartre 55.7 against ~42): at the same proportion the ceiling is
+  ~34-40 ms on the phone, **25-29 fps -- with all three costs gone entirely**, which no real design does: drawing the
+  next frame while the GPU renders keeps some wait, merged draws keep some draws (atlases are not bit-exact, round
+  24), a fused copy-and-convert still writes each pixel once (about half of cl_cvcp). At ~60% of each ceiling: ~44-48
+  ms in Montmartre on the phone (~21-23 fps), ~38-40 elsewhere (~25-26).
+- One way the phone could do better than this: the model's per-draw cost (20 us + 8 a bind) may be low -- the phone's
+  own fit was ~47 us a draw (r87a, FRC4) -- so merged draws could be worth up to ~8 ms there, not ~4.5.
+- What is left at the ceiling (cl_all, segments 0-29): our GL submission's own CPU ~6-7 ms (the hook with no driver
+  cost), the rest 13.7 (logic, the walk, the shadow insert, +31A26/50, the post's remainder, ~6 unnamed), the yield
+  1.6, the 2D 1.8. **30 fps everywhere needs, besides the three, a cut in the game's own per-frame work** (the "rest":
+  ~14 ms bench, ~19 phone) -- the deep reverse engineering of round 60's "bake the static world" line.
+- Also seen: cl_cvcp's yield 2.8 -> 1.6 ms -- the runtime's re-posts (+606 every loop iteration, round 56) convert
+  inside the yield too; skipping a post with no new frame (round 56's v3, ~0.8 ms) is part of that.
