@@ -14897,10 +14897,12 @@ shadow insert 1.5, +31A26/50 1.6, the post ~2.8, ~6 unnamed). 30 fps is 33.3 ms:
 - Also seen: cl_cvcp's yield 2.8 -> 1.6 ms. **Unexplained** (corrected: my first note put it on the runtime's re-posts,
   but the record has one post a render in a race -- the model's stats lines, round 88's RE notes).
 - **Caveats (the owner: "any caveats?")**:
-  1. The 1.3x bench-to-phone scale is one comparison (different cars and routes) and not uniform by block: the model
-     overstates memory-streaming code ~3x (round 88: the convert ~2.4 ms on the phone). The phone measured the copy
-     and the convert itself: ~2.5 ms the composite's rows (comp less read), ~2.4-2.8 the convert -- so **cl_cvcp's
-     ceiling on the phone is ~5 ms, not 1.3 x 5-9**, and a fused pass ~2-3.
+  1. The 1.3x bench-to-phone scale is one comparison (different cars and routes) and not uniform by block. The phone
+     measured the copy and the convert itself: ~2.5 ms the composite's rows (comp less read), ~2.4-2.8 the convert --
+     so **cl_cvcp's ceiling on the phone is ~5 ms, not 1.3 x 5-9**, and a fused pass ~2-3. (Corrected, the owner: "are
+     you entirely sure of this?": my first reason, "the model overstates memory-streaming code ~3x", does not hold for
+     these runs -- the bench's own copy rows are 2.2-2.4 ms and the convert 2.8-4.4 (cl_cvcp's drop in "rest"),
+     about the phone's. The ~5 ms stands on the phone's measurement, not on that ratio.)
   2. Merged draws cannot reach cl_call's ceiling: a third of the triangles have texcoords outside [0, 1] (round 23's
      census: repeat-wrapped, no atlas for them), round 24's atlas took calls 210 -> 153 (-27%), not bit-exact, ~4 MB.
      Unless the phone's per-draw cost is the higher ~47 us fit, a realistic merge is ~1-3 ms there.
