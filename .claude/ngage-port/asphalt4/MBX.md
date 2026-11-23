@@ -15159,7 +15159,8 @@ a. Guesses, each settled or named: (1) ordinal 70 is glGetString on the N95 8GB 
    "1.2.19.1 HW PowerVR MBX with VGP"; (3) named: a software GL's name is not known to us; the test accepts only a
    PowerVR's, so an unknown hardware GL is refused too (it then plays as stock); (4) the intro crash that START_AFTER
    once guarded was the window era's (round 5) -- g96 drew from the first triangle with the boot fault only, the intro
-   and menus byte-identical to r91e's (no triangle reaches the hook before the garage).
+   and menus byte-identical to r91e's (the GPU changed no pixel before the garage -- whether a triangle reached the hook
+   earlier, and so where bring-up ran, was not recorded).
 b. Read back: every hunk under A4_GPUCHECK (and START_AFTER only through C96.flags); a refusal leaves s->up at
    A4_GL_NEVER, which every GPU path reads as "not up"; the retry gate only delays bring-up; the injector appends
    ordinal 70 only with the flag and asserts A4_M1SKY's slot before it.
