@@ -15181,3 +15181,25 @@ c. Not entered by the bench before: bring-up in the garage (g96: the HOME screen
   and the session is the game's own, as before bring-up. The library is loaded once and never closed. The import
   section of the image names no libgles_cm (checked in the built image against r91e's). Bench only: A4_GLDYN_FAIL
   (Load asked for "libgles_xx.dll").
+- gd96 (C96 with A4_GLDYN, the menus and LA 60 s): framestat 1,563 (C96 with the static import: 1,507), ~173 GL draws a
+  scene through the loaded table, telemetry written; gd96f (+ A4_GLDYN_FAIL): 1,268 (the forced refusal's 1,260), no GL
+  call, no telemetry -- the game's own renderer through menus and race; the boot fault only in both.
+- **bat96c on the r91f candidate as it now stands** (a4_r91f_cand.exe = C96 with A4_GLDYN, sha256
+  47a0f91a50cf46f0b87b2bc838e1abe55b124de064769e6c9bab9dad7d6e4d3b, 1,025,816 bytes, no 0xDEADBEEF; it replaces the
+  a05ac751... build above, never sent): at96 (six maps 45 s) 5,704; m96 (Instant Play 300 s, 7 marks) 2,436; pa96
+  (Paris 400 s) 3,619; rv96 (the Mini reversing) 2,023, ~149 paint triangles a render matched, 0 unmatched; the boot
+  fault only in each. C90-C95 rebuild to their bytes.
+
+Rule 4, before r91f goes out (A4_GLDYN):
+a. Guesses, each settled or named: (1) the game's slots at code+0x50FA8 / +0x50FB8 are RLibrary::Load(const TDesC &,
+   const TDesC &) and RLibrary::Lookup(TInt) -- the game's own imports (euser 1308, 1838), used by round 57's census on
+   the RM-320 bench and now by gd96: the table filled and the GPU drawing; (2) Lookup returns 0 for an ordinal the
+   library lacks -- RLibrary::Lookup's contract (NULL if not found), not exercised (gd96f exercises a missing library,
+   not a missing ordinal) -- named; (3) loading the library late is as loading it at start -- the RM-320 ROM's
+   libgles_cm has no data section (its header: data size 0), so nothing of its depends on process start; (4) the
+   handle: RLibrary::Load's default owner, the loading (main) thread, which is the thread that makes every GL call.
+b. Read back: a4_gl_iat_ptr() redefined to the RAM table only under A4_GLDYN; gl_dyn_link writes slot 0 last and clears
+   what it wrote on a missing ordinal; its state ends 1 or 2, so it runs once; the injector adds no libgles_cm block
+   with the flag (the image's import section checked) and patches the two RLibrary words (no 0xDEADBEEF left).
+c. Not entered by the bench before: a session whose GL library is loaded by the blob (gd96, bat96c), a session whose
+   library does not load (gd96f). Not entered at all: a phone whose libgles_cm lacks one of the 48 ordinals.
