@@ -5727,7 +5727,7 @@ static inline def_prim_fn def_dp(void) { return (def_prim_fn)((uint32_t)(uintptr
  * entry y, entry x, hash at the turn; 4 kept, to [94]), [95..100] early draws by cause (def_flush's why), [101] changes
  * before one noted, 7 words each from [102] (2 kept, to [115]); [119] hole pixels the composite or the fill wrote (must
  * be 0), [120] undrawn pixels taken as filled but left as they were (a fill of an equal colour, else a fault), [121]
- * span writes outside the columns kept (must be 0). A4_SCRATCH_SIZE 0x23E000 or more (injector.py). */
+ * span writes outside the columns kept (must be 0). A4_SCRATCH_SIZE 0x23F000 or more (injector.py). */
 #define DFK_SCR ((volatile uint16_t *)0x005C9000u)
 #define DFK_SNAP ((volatile uint16_t *)0x005EE800u)
 #define DFK_CHG(y) ((volatile uint32_t *)0x00614000u + (uint32_t)(y) * (VP_W / 32u))
@@ -5735,10 +5735,35 @@ static inline def_prim_fn def_dp(void) { return (def_prim_fn)((uint32_t)(uintptr
 #define DFK_B ((volatile uint32_t *)0x00616800u)
 #define DFK_NOTE ((volatile uint32_t *)0x00412D00u)
 #define DFK_BBL ((volatile uint32_t *)0x00616A00u)   /* [0] n, then (the hook's call, x0 | y0 << 16, x1 | y1 << 16) */
+#define DFK_WL ((volatile uint32_t *)0x0063F000u)    /* the lines' and billboards' writes since the list began: [0] n,
+                                                      * then (the hook's call then, x0 | y0 << 16, x1 | y1 << 16 incl.) */
+#define DFK_WN 256u
 #define DFK_PRE ((volatile uint16_t *)0x00617000u)   /* the screen before the composite */
 #define DFK_HM0 ((volatile uint32_t *)0x0063C800u)   /* the undrawn masks before the fill's pixels are taken out */
-_Static_assert(0x00617000u + VP_H * FB_STRIDE * 2u <= 0x0063C800u && 0x0063C800u + VP_H * (VP_W / 32u) * 4u <= 0x0063F000u,
-               "the check's screen before the composite and its masks");
+_Static_assert(0x00617000u + VP_H * FB_STRIDE * 2u <= 0x0063C800u && 0x0063C800u + VP_H * (VP_W / 32u) * 4u <= 0x0063F000u
+               && 0x0063F000u + (1u + DFK_WN * 3u) * 4u <= 0x00640000u, "the check's screen before the composite, masks, log");
+/* a software write into the screen while copies are listed (a line's or a billboard's), logged with the hook's call:
+ * a pixel it changed before a copy's turn is not a change after it (the screen kept at the list's start predates it) */
+static void dfk_wlog(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+{
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > VP_W - 1) x1 = VP_W - 1;
+    if (y1 > VP_H - 1) y1 = VP_H - 1;
+    if (x0 > x1 || y0 > y1) return;
+    const uint32_t n = DFK_WL[0];
+    if (n < DFK_WN) { volatile uint32_t *w = DFK_WL + 1u + n * 3u; w[0] = DEF[4]; w[1] = (uint32_t)x0 | (uint32_t)y0 << 16; w[2] = (uint32_t)x1 | (uint32_t)y1 << 16; }
+    DFK_WL[0] = n + 1u;
+}
+/* (x, y) written by a logged write before the hook's call t */
+static int dfk_before(uint32_t x, uint32_t y, uint32_t t)
+{
+    for (uint32_t i = 0, n = DFK_WL[0] < DFK_WN ? DFK_WL[0] : DFK_WN; i < n; i++) {
+        volatile uint32_t *w = DFK_WL + 1u + i * 3u;
+        if (w[0] < t && x >= (w[1] & 0xFFFFu) && x <= (w[2] & 0xFFFFu) && y >= (w[1] >> 16) && y <= (w[2] >> 16)) return 1;
+    }
+    return 0;
+}
 _Static_assert(0x00616A00u + (1u + 64u * 3u) * 4u <= 0x00617000u, "the billboards' log");
 _Static_assert(0x005C9000u + VP_H * FB_STRIDE * 2u <= 0x005EE800u && 0x005EE800u + VP_H * FB_STRIDE * 2u <= 0x00614000u
                && 0x00614000u + VP_H * (VP_W / 32u) * 4u <= 0x00616600u && 0x00616600u + DEF_N * 4u <= 0x00616800u
@@ -5795,7 +5820,8 @@ static uint32_t dfk_diff_rows(uint32_t k, uint32_t ya, uint32_t yb)
     uint32_t n = 0;
     for (uint32_t y = (e[2] & 0xFFFFu) > ya ? e[2] & 0xFFFFu : ya; y <= e[2] >> 16 && y <= yb; y++) {
         if ((DEF_DR[y >> 5] >> (y & 31u)) & 1u) continue;   /* a band drew the copy there: what follows is after it */
-        for (uint32_t x = e[3] & 0xFFFFu; x <= e[3] >> 16; x++) n += fb[y * FB_STRIDE + x] != DFK_SNAP[y * FB_STRIDE + x];
+        for (uint32_t x = e[3] & 0xFFFFu; x <= e[3] >> 16; x++)
+            n += fb[y * FB_STRIDE + x] != DFK_SNAP[y * FB_STRIDE + x] && !dfk_before(x, y, e[0]);
     }
     return n;
 }
@@ -5813,7 +5839,7 @@ static uint32_t dfk_diff(uint32_t k, int mark)
     for (uint32_t y = e[2] & 0xFFFFu; y <= e[2] >> 16; y++) {
         if (mark && ((DEF_DR[y >> 5] >> (y & 31u)) & 1u)) continue;   /* a band drew the copy there */
         for (uint32_t x = e[3] & 0xFFFFu; x <= e[3] >> 16; x++)
-            if (fb[y * FB_STRIDE + x] != DFK_SNAP[y * FB_STRIDE + x]) {
+            if (fb[y * FB_STRIDE + x] != DFK_SNAP[y * FB_STRIDE + x] && !dfk_before(x, y, e[0])) {
                 n++;
                 if (mark) DFK_CHG(y)[x >> 5] |= 1u << (x & 31u);
             }
@@ -5916,18 +5942,35 @@ static void def_band(int32_t ya, int32_t yb, uint32_t why)
             def_dr(k);
             const uint32_t d = dfk_diff_rows(k, (uint32_t)ya, (uint32_t)yb);
             crk_get()[47] += d;
-            if (d && DFK_NOTE[101] < 2u) {           /* the first such pixel: where, what, the band and its cause */
+            if (d && DFK_NOTE[101] < 1u) {           /* the first such pixel: where, what, the band and its cause (one
+                                                      * note: [110..113] hold the billboard nearest it) */
                 volatile uint32_t *e = DEF_E(k);
                 const volatile uint16_t *fb = (const volatile uint16_t *)(uintptr_t)*(volatile uint32_t *)A4_GL_BB;
                 for (uint32_t y = (e[2] & 0xFFFFu) > (uint32_t)ya ? e[2] & 0xFFFFu : (uint32_t)ya; y <= e[2] >> 16 && y <= (uint32_t)yb; y++) {
                     if ((DEF_DR[y >> 5] >> (y & 31u)) & 1u) continue;
                     uint32_t x = e[3] & 0xFFFFu;
-                    while (x <= e[3] >> 16 && fb[y * FB_STRIDE + x] == DFK_SNAP[y * FB_STRIDE + x]) x++;
+                    while (x <= e[3] >> 16 && (fb[y * FB_STRIDE + x] == DFK_SNAP[y * FB_STRIDE + x] || dfk_before(x, y, e[0]))) x++;
                     if (x > e[3] >> 16) continue;
                     volatile uint32_t *q = DFK_NOTE + 102u + DFK_NOTE[101] * 7u;
                     q[0] = x | y << 16; q[1] = fb[y * FB_STRIDE + x] | (uint32_t)DFK_SNAP[y * FB_STRIDE + x] << 16;
                     q[2] = (e[1] & 0xFFFFu) | why << 16 | k << 20 | n << 26; q[3] = e[2]; q[4] = e[3];
                     q[5] = (uint32_t)ya | (uint32_t)yb << 16; q[6] = DEF_BAND[0] | 0x80000000u;   /* a band's note */
+                    {   /* the software billboards logged since the list began: the nearest to the pixel, after the turn */
+                        uint32_t best = 0xFFFFFFFFu, bi = 0xFFu;
+                        for (uint32_t b = 0; b < DFK_BBL[0] && b < 64u; b++) {
+                            volatile uint32_t *r = DFK_BBL + 1u + b * 3u;
+                            if ((r[0] & 0x3FFFFFFFu) <= e[0]) continue;
+                            const int32_t bx0 = (int32_t)(r[1] & 0xFFFFu), by0 = (int32_t)(r[1] >> 16), bx1 = (int32_t)(r[2] & 0xFFFFu), by1 = (int32_t)(r[2] >> 16);
+                            const int32_t dx = (int32_t)x < bx0 ? bx0 - (int32_t)x : (int32_t)x >= bx1 ? (int32_t)x - bx1 + 1 : 0;
+                            const int32_t dy = (int32_t)y < by0 ? by0 - (int32_t)y : (int32_t)y >= by1 ? (int32_t)y - by1 + 1 : 0;
+                            if ((uint32_t)(dx + dy) < best) { best = (uint32_t)(dx + dy); bi = b; }
+                        }
+                        if (bi != 0xFFu) {   /* [116..118] reused: its rect, its flags and the distance */
+                            volatile uint32_t *r = DFK_BBL + 1u + bi * 3u;
+                            DFK_NOTE[110] = r[1]; DFK_NOTE[111] = r[2]; DFK_NOTE[112] = (r[0] & 0xC0000000u) | (best & 0xFFFFu);
+                            DFK_NOTE[113] = DFK_BBL[0];
+                        }
+                    }
                     DFK_NOTE[101]++;
                     break;
                 }
@@ -6005,7 +6048,7 @@ static void def_add(volatile struct glr *s, uint32_t *gctx, const uint32_t *desc
 #ifdef A4_BLDEFERCHK
     DFK_H[m] = dfk_render(e, (uint32_t *)desc);                              /* from the game's own, at its turn */
     DFK_B[m] = dfk_box(e);
-    if (!m) { dfk_snap(); DFK_BBL[0] = 0; }
+    if (!m) { dfk_snap(); DFK_BBL[0] = 0; DFK_WL[0] = 0; }
 #endif
     DEF[0] = s->frames; DEF[1] = m + 1u;
     crk_get()[40]++;
@@ -6170,6 +6213,9 @@ uint32_t a4_aaline(uint32_t surf, const int32_t *p0, const int32_t *p1, uint32_t
         def_flush(5u);                               /* bench: every line draws the list first */
 #else
         if (def_over(xa - 2, ya - 2, xb + 2, yb + 2)) def_band(ya - 2, yb + 2, 5u);
+#endif
+#ifdef A4_BLDEFERCHK
+        dfk_wlog(xa - 2, ya - 2, xb + 2, yb + 2);
 #endif
     }
 #ifdef A4_BLDEFERCHK
@@ -12193,11 +12239,24 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
     if (mode != 0u && sky_rows(s) && y1 > (int32_t)sky_rows(s)) sky_check_expect(y0, y1 - 1);
 #endif
 #ifdef A4_BLDEFER
-    if (mode != 0u && y1 > (int32_t)sky_rows(s) && def_n() && def_over(x0, y0, x1 - 1, y1 - 1)) def_band(y0, y1 - 1, 2u);
 #ifdef A4_BLDEFERCHK
-    else if (mode != 0u && y1 > (int32_t)sky_rows(s) && def_n()) {   /* bench: a software blit beside the listed copies */
+    uint32_t dfk_banded = 0;
+#endif
+    if (mode != 0u && y1 > (int32_t)sky_rows(s) && def_n() && def_over(x0, y0, x1 - 1, y1 - 1)) {
+        def_band(y0, y1 - 1, 2u);
+#ifdef A4_BLDEFERCHK
+        dfk_banded = 0x80000000u;
+#endif
+    }
+#ifdef A4_BLDEFERCHK
+    if (mode != 0u && def_n() && y1 > (int32_t)sky_rows(s)) dfk_wlog(x0, y0, x1 - 1, y1 - 1);
+    if (mode != 0u && def_n()) {   /* bench: every software blit while copies are listed (bit 31: it banded; 30: above the sky) */
         const uint32_t b = DFK_BBL[0];
-        if (b < 64u) { volatile uint32_t *r = DFK_BBL + 1u + b * 3u; r[0] = DEF[4]; r[1] = (uint32_t)x0 | (uint32_t)y0 << 16; r[2] = (uint32_t)x1 | (uint32_t)y1 << 16; }
+        if (b < 64u) {
+            volatile uint32_t *r = DFK_BBL + 1u + b * 3u;
+            r[0] = (DEF[4] & 0x3FFFFFFFu) | dfk_banded | (y1 <= (int32_t)sky_rows(s) ? 0x40000000u : 0u);
+            r[1] = (uint32_t)x0 | (uint32_t)y0 << 16; r[2] = (uint32_t)x1 | (uint32_t)y1 << 16;
+        }
         DFK_BBL[0] = b + 1u;
     }
 #endif

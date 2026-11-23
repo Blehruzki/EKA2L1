@@ -139,8 +139,8 @@ assert '-DA4_LINEREC' not in _xf or ('-DA4_FRC3' in _xf and GL_SCRATCH + GL_SCRA
     'A4_LINEREC: written with FRC3\'s blocks, its ring at 0x5BA000, the stream\'s row edges at 0x5BB000-0x5C0280 -- A4_SCRATCH_SIZE must be 0x1C0000 or more'
 assert '-DA4_BLDEFER' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5C9000, \
     'A4_BLDEFER: its list at 0x5C4000-0x5C8800 -- A4_SCRATCH_SIZE must be 0x1C8000 or more'
-assert '-DA4_BLDEFERCHK' not in _xf or ('-DA4_BLDEFER' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x63F000), \
-    'A4_BLDEFERCHK: its three screens, masks and hashes at 0x5C9000-0x63F000 -- A4_SCRATCH_SIZE must be 0x23E000 or more'
+assert '-DA4_BLDEFERCHK' not in _xf or ('-DA4_BLDEFER' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x640000), \
+    'A4_BLDEFERCHK: its three screens, masks, hashes and write log at 0x5C9000-0x640000 -- A4_SCRATCH_SIZE must be 0x23F000 or more'
 assert '-DA4_BLURCHECK' not in _xf or ('-DA4_NITROBLUR' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5E9800), \
     'A4_BLURCHECK: its copy of the screen at 0x5C4000-0x5E9800 -- A4_SCRATCH_SIZE must be 0x1E9000 or more'
 assert '-DA4_SNOWCHECK' not in _xf or ('-DA4_SNOWFAST' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x61EB00), \

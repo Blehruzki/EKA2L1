@@ -15314,9 +15314,14 @@ c. Not entered by the bench before: a session whose GL library is loaded by the 
   3-6 s for the flame's billboards): render differences, changed holes, holes written, span writes outside -- **0 in
   every run (73k copies listed, ~2,500 bands, up to 476 billboard bands a run)**. One run (bk97j: 476 billboard bands,
   294 line bands) counted **812 pixels changed under listed copies before a band, outside the rows a band had drawn**,
-  in two windows; not reproduced since (bk97k-n: 13 / 47 / 0 / 127 billboard bands), with the band notes in place to
-  catch it. Open: where those pixels came from -- the gated watch (dg97b, the band build) names no writer but the
-  billboard's row, the line and the band redraws themselves.
+  in two windows; caught again with notes (bk97o, 400 s, nitro every 4 s: 544 billboard bands; bk97q: at a line's band,
+  no billboard logged after the copy's turn). **The check's own fault**: after a band it keeps the screen again on the
+  band's rows, but the writer that asked for the band (the line, the billboard) writes those rows only after the band
+  returns -- a copy listed after that write holds those pixels in its turn's state, the kept screen does not, and the
+  next band's comparison counted them. The check now logs every line's and billboard's rectangle while copies are
+  listed (with the hook's call) and leaves out a changed pixel that such a write before the copy's turn covers. **bk97r
+  (400 s, nitro every 4 s, 777 billboard bands -- the most of any run): 15,507 copies listed, 0 render differences, 0
+  changed holes, 0 changed before a band or an early draw, 0 holes written, 0 span writes outside.**
 - **Step 3 (texture sheets), weighed before building**: round 18's A/B on the phone priced a draw call at ~30 us
   (reorder on and off, same scenes), but round 24's atlas -- the same idea, 75 fewer calls a frame -- gave no steady
   gain once its uploads were done (85.1 ms against 84.8), and round 88 read the regression's per-corner cost as our
