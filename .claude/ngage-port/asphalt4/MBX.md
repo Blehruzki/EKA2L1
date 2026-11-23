@@ -15219,6 +15219,16 @@ c. Not entered by the bench before: a session whose GL library is loaded by the 
 - The owner ran r91f on the N95 8GB: all good -- the GPU from the first 3D frame, the reflection reversing, nothing
   reported broken. No telemetry uploaded with it (the frame times of this round are not on file).
 
+### Phone round r91f, the owner's second report (round 89, after C98: "Let's put a pin to this decision. Go back to the latest build you sent, we have several bugs: Nissan 350Z, Ferrari 599 GTB - the wheels don't spin. Kawasaki Z1000 - ... Sometimes a part of the bike clips through the players back. Shadows in the brake lights when braking with the nissan (might happen with other cars too, so check on them all, including bikes). Make sure all of these fixes apply to all vehicles when applicable")
+- On r91f (C96). C97 / C98 (the deferral, the sky skip) and the pipelining question are pinned; the fixes go on C96.
+- Three videos (up91g, 640x480 phone-camera recordings of the N95's screen; frames at 2 and 8 a second, crops):
+  - KawasakiZ1000 (21 s, a tunnel then LA's open road): in some frames **the bike's green tank -- in front of the
+    rider, hidden by the rider's back from the chase camera -- is drawn over the rider's back** (8 fps frames 81-85: a
+    green shape from the helmet down the torso); in the frames around them the rider's back is whole.
+  - braking_shadow (9 s) and braking 2026-11-23 (19 s), the 350Z: **while braking, a pale square-edged patch over the
+    tail light** (the red lamp's shape replaced in part by a flat light block), not seen when not braking.
+  - The wheels' spin (350Z, 599 GTB) is the owner's observation; the videos are too blurred to show it.
+
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
   composite turns the GPU's BGRA strip (READBUF, 20 KB: in the cache) into the game's 565 rows (a4_comp_row, ~5
