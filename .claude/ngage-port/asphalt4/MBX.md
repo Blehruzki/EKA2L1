@@ -15194,12 +15194,19 @@ Rule 4, before r91f goes out (A4_GLDYN):
 a. Guesses, each settled or named: (1) the game's slots at code+0x50FA8 / +0x50FB8 are RLibrary::Load(const TDesC &,
    const TDesC &) and RLibrary::Lookup(TInt) -- the game's own imports (euser 1308, 1838), used by round 57's census on
    the RM-320 bench and now by gd96: the table filled and the GPU drawing; (2) Lookup returns 0 for an ordinal the
-   library lacks -- RLibrary::Lookup's contract (NULL if not found), not exercised (gd96f exercises a missing library,
-   not a missing ordinal) -- named; (3) loading the library late is as loading it at start -- the RM-320 ROM's
+   library lacks -- RLibrary::Lookup's contract (NULL if not found); on the bench settled by gd96m (below); (3) loading the library late is as loading it at start -- the RM-320 ROM's
    libgles_cm has no data section (its header: data size 0), so nothing of its depends on process start; (4) the
    handle: RLibrary::Load's default owner, the loading (main) thread, which is the thread that makes every GL call.
 b. Read back: a4_gl_iat_ptr() redefined to the RAM table only under A4_GLDYN; gl_dyn_link writes slot 0 last and clears
    what it wrote on a missing ordinal; its state ends 1 or 2, so it runs once; the injector adds no libgles_cm block
    with the flag (the image's import section checked) and patches the two RLibrary words (no 0xDEADBEEF left).
 c. Not entered by the bench before: a session whose GL library is loaded by the blob (gd96, bat96c), a session whose
-   library does not load (gd96f). Not entered at all: a phone whose libgles_cm lacks one of the 48 ordinals.
+   library does not load (gd96f), a library without one of the functions (gd96m, below).
+- gd96m (the owner: "can't you simulate a missing function?"; C96 + -DA4_GLDYN_MISSORD=20u -- slot 20 asks ordinal 999,
+  past the library's 175; EKA2L1_WATCH on the table 0x5C3800-0x5C3910): first EKA2L1's lookup read back --
+  codeseg::lookup_no_relocate returns 0 for an ordinal past the export table, as RLibrary::Lookup's contract (NULL if
+  not found). The watch, in order: 'GLD1', state 2, the library's handle, slots 47 down to 21 written with addresses,
+  then why = 0x10014 (0x10000 | slot 20) and slots 21-47 written back to 0; slot 0 never written; 58 writes, exactly
+  that sequence. The session: no GL call, no telemetry, framestat 1,260 (the game's own renderer: gd96f 1,268), the
+  boot fault only. **So Rule 4 a.(2) is settled on the bench: a missing function leaves the GPU off for the session.**
+  The candidate is unchanged (the switch is bench only; C96 still builds 47a0f91a...).

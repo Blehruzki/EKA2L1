@@ -10142,7 +10142,12 @@ static void gl_dyn_link(void)
     G[2] = lib;
     const volatile uint32_t *ord = (a4_gl_iat_ptr)();   /* the ordinals, as a4_gl.s holds them */
     for (uint32_t i = GLD_N; i-- > 0u; ) {          /* [0] last: until then every GL path reads "no GL" */
+#ifdef A4_GLDYN_MISSORD
+        void *f = lookup(&lib, i == (A4_GLDYN_MISSORD) ? 999 : (int)ord[i]);   /* bench: one slot asks an ordinal past
+                                                                                * the library's 175 */
+#else
         void *f = lookup(&lib, (int)ord[i]);
+#endif
         if (!f) { G[3] = 0x10000u | i; for (uint32_t k = i + 1u; k < GLD_N; k++) G[4u + k] = 0; return; }
         G[4u + i] = (uint32_t)(uintptr_t)f;
     }

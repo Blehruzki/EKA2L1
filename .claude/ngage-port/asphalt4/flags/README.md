@@ -143,4 +143,4 @@ no opengl es library at all, shouldn't just fall back to software rendering?"): 
 the library at its first triangle with the game's own RLibrary::Load and resolves a4_gl_iat's 48 ordinals with
 RLibrary::Lookup into a RAM table (0x5C3800); a library or ordinal missing leaves the table empty and the game's own
 renderer draws the session. Same scratch. Bench only: `-DA4_GPUCHECK_NOPVR` (the refusal forced), `-DA4_GLDYN_FAIL`
-(a library name no phone has).
+(a library name no phone has), `-DA4_GLDYN_MISSORD=<slot>` (that slot asks ordinal 999: a library without the function).
