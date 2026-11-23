@@ -15118,3 +15118,32 @@ c. Not entered by the bench before: the game's own paint triangles as var 3 with
   with the bench switches in the tree). The owner bakes it. What the round reads: the windshield reversing (the Mini and
   any other car), against the original's look; the frame rate reversing (~1.1 ms a render more than r91d there: the
   capture, as the chase view's).
+
+### The GPU only on a PowerVR, and from the first frame (the owner: "Yeah I think that would be better. Also make it so that the gpu kicks in from the first moment instead of waiting until you start a race")
+- Before: the GPU path started at the 50,000th triangle through the hook (START_AFTER, from round 5: drawing during the
+  intro video then crashed the bench, in the window era) -- in practice a few seconds into the first race. A failed
+  bring-up returned 0 and was tried again at every triangle (each attempt making EGL objects), and nothing looked at
+  what the GL was: on a phone whose GL is software, the whole path would run through it on the same CPU.
+- **The renderer's name, from the firmware**: glGetString is libgles_cm export 70 on the RM-320 (the N95 8GB) ROM --
+  its code at 0x804A2870 compares the argument with 0x1F00 / 0x1F01 / 0x1F02 and returns "Nokia" / "1.2.19.1 HW PowerVR
+  MBX with VGP" / "OpenGL ES-CM 1.1" (romimg.py --rom on SYM.ROM, disassembled; 68 = glGetError, 69 = glGetIntegerv by
+  their code, as the build uses them). The 47 ordinals the build imports all sit where the def's alphabetical order
+  puts them, so 70 is also the def's -- but the claim rests on the ROM's code. The bench's GL calls itself "POWERVR
+  EKA2L1" (EKA2L1's GLES1_STATIC_STRING_RENDERER).
+- **A4_GPUCHECK (new; C96 = C95 + it + -DSTART_AFTER=1u)**: bring-up, once current, asks for GL_RENDERER (glGetString
+  imported at a4_gl.s [47], ordinal 70, with the flag only) and goes on only if it holds "MBX" or "PowerVR" (any case,
+  compared character by character: no string constants in the blob). Anything else: the context released, bstep 0xE0,
+  s->up = A4_GL_NEVER -- the game's own renderer for the session, every take and the composite off as before bring-up.
+  Another failure: tried again after 20,000 triangles, not at the next one. START_AFTER 1: bring-up at the first
+  triangle the hook sees. Bench only: -DA4_GPUCHECK_NOPVR (the refusal forced).
+- g96 / g95b (C96 / r91e, the same menu path from boot, posts 0-699 dumped; then LA 60 s): **485 of C96's 700 posts
+  byte-identical to r91e's -- the intro and the menus through post 387**; 388-598 differ by a mean 2.08 a channel: the
+  garage's car (the HOME screen) now the GPU's -- the differences scattered texel noise inside the 3D area, the 2D
+  panels over it identical (garage_cmp.png); the race on the GPU from its first frame (r91e's started in software).
+  The boot fault only in each.
+- g96n (C96 + A4_GPUCHECK_NOPVR, the same path): the boot fault only, the menus and the race drawn by the game's own
+  renderer (framestat 1,260 against C96's 1,507 and r91e's 1,433 in the same time), the stock picture; no telemetry
+  file (its captures ride the GPU's composite).
+- What it does not cover: a phone with no libgles_cm at all, or one whose library lacks an ordinal the build imports,
+  still cannot start the exe (the loader refuses it before any of our code runs) -- the import is static. The pbuffer
+  and context made before the refusal stay allocated (~0.3 MB) for the session: EGL's destroy calls are not imported.

@@ -227,6 +227,7 @@
 #define GL_DEPTH_BITS 0x0D56
 #define GL_STENCIL_BITS 0x0D57
 #define GL_ALPHA_BITS 0x0D55
+#define GL_RENDERER 0x1F01                /* round 89 (A4_GPUCHECK): glGetString's name of the renderer */
 #define GL_BGRA 0x80E1                   /* IMG/EXT read_format_bgra: the N95's own read pair */
 #define EGL_ALPHA_SIZE_Z 0x3021
 #define GL_STENCIL_TEST 0x0B90
@@ -362,6 +363,9 @@ struct glr {
                                         * since its last clear (0: none known -- the bss-zeroed start) */
     uint32_t lpt;                      /* round 56 (A4_LONGPRESS): when the pause key's long-press count last dropped */
     uint32_t gobjprev;                 /* round 71 (A4_SLOWREC): the GPU objects the last 3D frame took */
+#ifdef A4_GPUCHECK
+    uint32_t retry;                    /* round 89: the triangle count (seen) before which a failed bring-up is not tried again */
+#endif
 };
 
 _Static_assert(sizeof(struct glr) <= A4_GL_READBUF - A4_GL_SCRATCH, "glr overlaps the readback strip");
@@ -899,6 +903,12 @@ static void  gl_gentex(int n,uint32_t*t){ ((void(*)(int,uint32_t*))F(10))(n,t); 
 #ifdef A4_M1SKY
 static void  gl_deltex(int n,const uint32_t*t){ ((void(*)(int,const uint32_t*))F(46))(n,t); }   /* ord 47, A4_M1SKY's slot */
 #endif
+#ifdef A4_GPUCHECK
+#ifndef A4_M1SKY
+#error "A4_GPUCHECK's glGetString is IAT slot 47, after A4_M1SKY's 46"
+#endif
+static const char *gl_getstring(uint32_t n){ return ((const char *(*)(uint32_t))F(47))(n); }   /* ord 70 */
+#endif
 static void  gl_bindtex(uint32_t tg,uint32_t t){ ((void(*)(uint32_t,uint32_t))F(11))(tg,t); }
 static void  gl_teximage(uint32_t tg,int l,int ifmt,int w,int h,int b,uint32_t f,uint32_t t,const void*p){ ((void(*)(uint32_t,int,int,int,int,int,uint32_t,uint32_t,const void*))F(12))(tg,l,ifmt,w,h,b,f,t,p); }
 static void  gl_texparamx(uint32_t tg,uint32_t p,int v){ ((void(*)(uint32_t,uint32_t,int))F(13))(tg,p,v); }
@@ -1017,6 +1027,24 @@ static uint32_t clear_bits(volatile struct glr *s)
     return GL_COLOR_BUFFER_BIT | (s->zbits ? GL_DEPTH_BUFFER_BIT : 0u) | (s->sbits ? GL_STENCIL_BUFFER_BIT : 0u);
 }
 
+#ifdef A4_GPUCHECK
+#define A4_GL_NEVER 0x0FF0DEADu                  /* s->up: the bring-up refused this phone's GL for the session */
+#define GPU_RETRY 20000u                         /* triangles before a failed bring-up is tried again (a few seconds) */
+/* "MBX" or "PowerVR" anywhere in the renderer's name, any case (at most 128 characters read; compared character by
+ * character -- no string constants in the blob, whose data is not relocated) */
+static inline char gpu_up(char c) { return (c >= 'a' && c <= 'z') ? (char)(c - 32) : c; }
+static int gpu_is_pvr(const char *r)
+{
+    if (!r) return 0;
+    for (uint32_t i = 0; i < 128u && r[i]; i++) {
+        const char a = gpu_up(r[i]);
+        if (a == 'M' && gpu_up(r[i + 1]) == 'B' && gpu_up(r[i + 2]) == 'X') return 1;
+        if (a == 'P' && gpu_up(r[i + 1]) == 'O' && gpu_up(r[i + 2]) == 'W' && gpu_up(r[i + 3]) == 'E'
+            && gpu_up(r[i + 4]) == 'R' && gpu_up(r[i + 5]) == 'V' && gpu_up(r[i + 6]) == 'R') return 1;
+    }
+    return 0;
+}
+#endif
 static int bringup(volatile struct glr *s)
 {
     s->bstep = 1;                                                  /* entered bring-up */
@@ -1160,6 +1188,17 @@ static int bringup(volatile struct glr *s)
     int ctx  = egl_context(disp, pcfg, 0, 0);if (!ctx)  return 0; s->bstep = 5;
 #endif
     if (!egl_make_current(disp, surf, surf, ctx))   return 0;       s->bstep = 6;
+#ifdef A4_GPUCHECK
+    /* round 89 (the owner: "check at startup which graphics chip is present"): the GPU path only on a PowerVR. The N95
+     * 8GB's renderer is "1.2.19.1 HW PowerVR MBX with VGP" (its ROM's own string), the bench's "POWERVR EKA2L1". On a
+     * phone with no graphics chip the GL is software on the same CPU -- this path through it would be slower than the
+     * game's own renderer -- so anything else is refused for the session (-1): the game draws everything itself, as
+     * stock. The pbuffer and context made above are left (released from current, never used). */
+#ifdef A4_GPUCHECK_NOPVR
+    if (1) { (void)gl_getstring(GL_RENDERER); egl_make_current(disp, 0, 0, 0); s->bstep = 0xE0; return -1; }  /* bench: refused */
+#endif
+    if (!gpu_is_pvr(gl_getstring(GL_RENDERER))) { egl_make_current(disp, 0, 0, 0); s->bstep = 0xE0; return -1; }
+#endif
 #ifdef A4_RBPROBE
     { extern void a4_rb_note(int, int, int); a4_rb_note(disp, surf, ctx); }
 #endif
@@ -10189,7 +10228,16 @@ static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
     volatile struct glr *s = (volatile struct glr *)A4_GL_SCRATCH;
     if (++s->seen < START_AFTER) return 0;           /* past the intro video + menu */
     if (s->up != A4_GL_MAGIC) {
+#ifdef A4_GPUCHECK
+        /* round 89: no PowerVR -> the game's own renderer for the session; a bring-up that failed otherwise is tried
+         * again after GPU_RETRY triangles, not at every triangle (each attempt makes EGL objects) */
+        if (s->up == A4_GL_NEVER || s->seen < s->retry) return 0;
+        {   const int b = bringup(s);
+            if (b < 0) { s->up = A4_GL_NEVER; return 0; }
+            if (!b) { s->retry = s->seen + GPU_RETRY; return 0; } }
+#else
         if (!bringup(s)) return 0;                   /* glr is bss-zeroed */
+#endif
         s->up = A4_GL_MAGIC;
 #ifndef A4_IMM
         s->dual = 1;                                 /* see the return below */

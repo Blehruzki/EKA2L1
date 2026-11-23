@@ -132,3 +132,11 @@ C90 / C91 / C92 / C93 / C94 rebuild to r90a's, r90b's, r91a's, r91c's and r91d's
 triangles matched, [38] of them reflecting, [39] second passes, [59] paint triangles matching no face (frec3.py timers).
 Bench only: `-DA4_M1PDCEN` (the player's mesh's mode-1 groups with a texel to reflect, in the pass or left out and why,
 CRK1 [40..47]), `-DA4_M1TINTR` (a bake's reflecting texels magenta: a reflection drawn from a bake, not the live pass).
+
+C96.flags = C95.flags with `-DA4_GPUCHECK -DSTART_AFTER=1u` (round 89: the owner, "check at startup which graphics chip
+is present ... Also make it so that the gpu kicks in from the first moment"). Bring-up asks the GL for its renderer
+(glGetString, libgles_cm ordinal 70 -- read from the RM-320 ROM's own code -- imported at a4_gl.s [47] with the flag)
+and runs the GPU path only on a PowerVR ("MBX" / "PowerVR" in the name); otherwise the game's own renderer for the
+session. A failed bring-up is tried again after 20,000 triangles instead of at every one. The GPU from the first triangle
+the hook sees (the garage's car in the menus included) instead of the 50,000th. 48 GLES imports. Same scratch. Bench
+only: `-DA4_GPUCHECK_NOPVR` (the refusal forced).

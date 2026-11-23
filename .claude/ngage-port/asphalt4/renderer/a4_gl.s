@@ -66,6 +66,11 @@ a4_gl_iat:
         .word   47      @ [46] glDeleteTextures (round 88, after r91b: the reflection's captures; the alphabetical
                         @      def's slot before glDepthFunc 48, as 48/49/52/55 are on the phone)
 #endif
+#ifdef A4_GPUCHECK
+        .word   70      @ [47] glGetString (round 89: the renderer's name. The RM-320 ROM's export 70 compares its
+                        @      argument with 0x1F00 / 0x1F01 / 0x1F02 and returns "Nokia" / "1.2.19.1 HW PowerVR MBX
+                        @      with VGP" / "OpenGL ES-CM 1.1" -- read from the firmware, not the def)
+#endif
         .global a4_gl_iat_end
 a4_gl_iat_end:
 
