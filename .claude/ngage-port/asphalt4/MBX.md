@@ -15147,3 +15147,22 @@ c. Not entered by the bench before: the game's own paint triangles as var 3 with
 - What it does not cover: a phone with no libgles_cm at all, or one whose library lacks an ordinal the build imports,
   still cannot start the exe (the loader refuses it before any of our code runs) -- the import is static. The pbuffer
   and context made before the refusal stay allocated (~0.3 MB) for the session: EGL's destroy calls are not imported.
+- **bat96 on the r91f candidate** (a4_r91f_cand.exe = C96, sha256
+  a05ac751b9aa99d103e008e2a41d6d3f0203c920b606611e7dca9577d39c15a4, 1,026,912 bytes, no 0xDEADBEEF): at96 (six maps 45 s)
+  framestat 5,697 (at95 5,641); m96 (Instant Play 300 s, 7 C marks) 2,316 (m95 2,314); pa96 (Paris 400 s) 3,718 (pa95
+  3,560); rv96 (the Mini reversing) 1,997, the windshield's pass as r91e's (~147 paint triangles a render matched, 0
+  unmatched); the boot fault only in each. C90-C95 rebuild to their bytes with the code in the tree.
+
+Rule 4, before r91f goes out (A4_GPUCHECK, START_AFTER 1):
+a. Guesses, each settled or named: (1) ordinal 70 is glGetString on the N95 8GB -- settled from the ROM's own code (the
+   0x1F00-0x1F02 compares and the three strings), not from the def; (2) the N95's renderer holds "MBX" -- its ROM string
+   "1.2.19.1 HW PowerVR MBX with VGP"; (3) named: a software GL's name is not known to us; the test accepts only a
+   PowerVR's, so an unknown hardware GL is refused too (it then plays as stock); (4) the intro crash that START_AFTER
+   once guarded was the window era's (round 5) -- g96 drew from the first triangle with the boot fault only, the intro
+   and menus byte-identical to r91e's (no triangle reaches the hook before the garage).
+b. Read back: every hunk under A4_GPUCHECK (and START_AFTER only through C96.flags); a refusal leaves s->up at
+   A4_GL_NEVER, which every GPU path reads as "not up"; the retry gate only delays bring-up; the injector appends
+   ordinal 70 only with the flag and asserts A4_M1SKY's slot before it.
+c. Not entered by the bench before: bring-up in the garage (g96: the HOME screen's car on the GPU, its 2D panels
+   intact), the refusal path for a whole session (g96n: menus and race on the game's own renderer, no fault), a race
+   whose first frame is the GPU's (g96, at96). Not entered at all: a real phone without a PowerVR (none here).
