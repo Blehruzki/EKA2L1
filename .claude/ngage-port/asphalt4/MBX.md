@@ -15210,3 +15210,7 @@ c. Not entered by the bench before: a session whose GL library is loaded by the 
   that sequence. The session: no GL call, no telemetry, framestat 1,260 (the game's own renderer: gd96f 1,268), the
   boot fault only. **So Rule 4 a.(2) is settled on the bench: a missing function leaves the GPU off for the session.**
   The candidate is unchanged (the switch is bench only; C96 still builds 47a0f91a...).
+- **r91f sent** (the owner: "yes"): a4_r91f_cand.exe, unbaked, sha256
+  47a0f91a50cf46f0b87b2bc838e1abe55b124de064769e6c9bab9dad7d6e4d3b, 1,025,816 bytes (C96). The owner bakes it. What the
+  round reads: the GPU from the first 3D frame (the garage's car, the race's first frame), everything else as r91e
+  (the reflection reversing on any car); the telemetry's bring-up step 6 (0xE0 would mean the chip check refused it).
