@@ -174,3 +174,10 @@ recorded sky store to the composite: with EKA2L1_RWATCH over the surface, every 
 `-DA4_SKYPUTCHECK` with `-DA4_SKYCHECK` (on C96 + the skip, not with A4_BLDEFER: both keep state at 0x460000): the
 stores put at each GPU frame's start and compared with the GPU's backdrop ([51] must stay 0); `-DA4_SKYPUTMUTANT` its
 test (a band row left out every 64th frame).
+
+C99.flags = C96.flags with `-DA4_CARDEFORM -DA4_BBREDRAWFIRST` (round 89, the owner's r91f bugs; not C97/C98's work):
+A4_CARDEFORM hashes each car mesh's vertices at its bake and at every take (the 24 tyre vertices out) and gives a moved
+mesh to the game for that render (the hashes at 0x4665A0, between GCBND and GCMESH); A4_BBREDRAWFIRST has a sprite over
+items pending the cover redraw draw the batch and the redraw first. Scratch as r91f (`A4_SCRATCH_SIZE=0x1C3000`).
+Bench only: `-DA4_CARDEFORMCEN` (CRK1 [40..45]), `-DA4_WHEELDESC`, `-DA4_WHEELSHOW` (with WHEELDESC), `-DA4_SPINCEN`,
+`-DA4_ANIMTINT`, `-DA4_CARITEMTINT`, `-DA4_CVRTINT`, `-DA4_SHADTINT`, `-DA4_CARMESHLOG` (MBX.md round 89).

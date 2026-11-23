@@ -6340,7 +6340,7 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 #ifdef A4_STREAMCEN
             if (0)     /* bench (round 83): the census owns CUT1's place */
 #endif
-#if defined(A4_CARPROBE2) || defined(A4_FLUSHPROBE) || defined(A4_WHEELCEN)
+#if defined(A4_CARPROBE2) || defined(A4_FLUSHPROBE) || defined(A4_WHEELCEN) || defined(A4_WHEELDESC) || defined(A4_CARMESHLOG)
             if (0)     /* bench (round 84): the car probe owns CUT1's place */
 #endif
             {   /* 'CUT1': this cut's raw corners, the last CUT_N kept -- a mark at a gap shows what was cut in its frame */
@@ -7985,7 +7985,45 @@ void a4_car_anim(uint32_t car)
 {
     volatile struct gcanim *A = GCANIM;
     if (A->magic != GCANIM_MAGIC) { A->mi = 0; A->refreshed = A->refused = A->rebakes = 0; A->magic = GCANIM_MAGIC; }
+#ifdef A4_SPINCEN
+    {   volatile uint32_t *C = crk_get();
+        if (GO32(car + 0x1A8u)) {
+            const uint32_t fr = ((volatile struct glr *)A4_GL_SCRATCH)->frames;
+            if (C[45] != fr) { C[45] = fr; C[44] &= 0xFFFF0000u; }
+            C[44]++;
+            if ((C[44] & 0xFFFFu) > (C[44] >> 16)) C[44] = (C[44] & 0xFFFFu) | (C[44] & 0xFFFFu) << 16;
+        }
+    }
+#endif
     A->car = car; A->frame = ((volatile struct glr *)A4_GL_SCRATCH)->frames;
+#ifdef A4_WHEELDESC
+    {   /* bench (round 89, the owner: "Nissan 350Z, Ferrari 599 GTB - the wheels don't spin"): CUT1's place, 'WDS1' --
+         * [1] calls with +1A8 set, [2] the car, [3] its frame word +66C, [4..7] the descriptors car+180[0..3]; for
+         * frames 1 and 2 ([8..27], [28..47]): the descriptor's address, its first 16 words, a hash of all its texels,
+         * the render it was read; [48] the first tyre face (car+26C), [49..57] its first nine words */
+        volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
+        if (U[0] != 0x31534457u) { for (uint32_t k = 1; k < 64u; k++) U[k] = 0; U[0] = 0x31534457u; }
+        if (GO32(car + 0x1A8u)) {
+            U[1]++; U[2] = car; U[3] = GO32(car + 0x66Cu);
+            for (uint32_t k = 0; k < 4u; k++) U[4u + k] = GO32(car + 0x180u + 4u * k);
+            for (uint32_t f = 1; f <= 2u; f++) {
+                volatile uint32_t *w = U + 8u + 20u * (f - 1u);
+                const uint32_t d = GO32(car + 0x180u + 4u * f);
+                if (!d || w[0] == d) continue;     /* hashed once per descriptor */
+                w[0] = d;
+                for (uint32_t k = 0; k < 16u; k++) w[1u + k] = GO32(d + 4u * k);
+                const uint32_t tw = GO32(d + 4u) + 1u, th = GO32(d + 8u) + 1u, px = GO32(d + 4u * TS_PIX);
+                uint32_t h = 0x811C9DC5u;
+                if (px && tw <= 1024u && th <= 1024u)
+                    for (uint32_t t = 0; t < tw * th; t++) h = (h ^ ((const volatile uint16_t *)(uintptr_t)px)[t]) * 16777619u;
+                w[17] = h; w[18] = ((volatile struct glr *)A4_GL_SCRATCH)->frames;
+            }
+            const uint32_t f0 = GO32(car + 0x26Cu);
+            U[48] = f0;
+            if (f0) for (uint32_t k = 0; k < 9u; k++) U[49u + k] = GO32(f0 + 4u * k);
+        }
+    }
+#endif
 #ifdef A4_CARANIMCEN
     {   /* bench (the owner: "only for players car. What about racing cars?"): CRK1 [40] calls of +1B084, [41] of them
          * with the car's +1A8 set (animated), [42] renders with a call, [43] the most calls in a render, [44] the last
@@ -8559,6 +8597,39 @@ static void m1s_capture(volatile struct glr *s)
     T[46] += a4_ntick() - t0;
 }
 #endif
+#ifdef A4_CARDEFORM
+/* Round 89 (the owner's Z1000: "Sometimes a part of the bike clips through the players back"). The bake copies a car
+ * mesh's corners once; a mesh whose vertices the game moves later (the Ducati's mesh 2, wc_duc: 642 corners away from
+ * the bake in the braking stretch, when the bike is far enough from the camera to pass the near-plane test) was drawn
+ * in its baked pose. Each car mesh's vertex positions are hashed at its bake (order-free: a mix of index and x y z per
+ * vertex, XORed) and again at each take; a different hash hands that mesh to the game for the render (as a failed
+ * gca_refresh does), so it is drawn as the game draws it. The 24 tyre vertices +1B084 moves every render are
+ * gca_refresh's own and left out of both. The hashes sit in the 24 words between GCBND's end and GCMESH. */
+#define GCVH ((volatile uint32_t *)(GCAR_BASE + 0x5A0u))
+_Static_assert(0x480u + GCAR_NM * 12u <= 0x5A0u && 0x5A0u + GCAR_NM * 4u <= 0x600u, "the cars' vertex hashes, between the bounds and the meshes");
+static inline uint32_t gcd_mix(uint32_t i, uint32_t vp)
+{
+    uint32_t h = (GO32(vp + 0x18u) * 0x9E3779B1u) ^ (GO32(vp + 0x1Cu) * 0x85EBCA77u) ^ (GO32(vp + 0x20u) * 0xC2B2AE3Du)
+               ^ (i * 0x27D4EB2Fu);
+    h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12;
+    return h;
+}
+/* acar: the car +1B084 animates with this mesh (its 24 tyre vertices left out), or 0 */
+static uint32_t gcd_hash(uint32_t verts, uint32_t nv, uint32_t acar)
+{
+    uint32_t h = 0;
+    for (uint32_t i = 0; i < nv; i++) h ^= gcd_mix(i, verts + 40u * i);
+    if (acar)
+        for (uint32_t k = 0; k < 24u; k++) {
+            const int32_t i = GOS16(acar + 0x1ACu + 2u * k);
+            if (i < 0 || (uint32_t)i >= nv) continue;
+            uint32_t dup = 0;
+            for (uint32_t j = 0; j < k && !dup; j++) dup = GOS16(acar + 0x1ACu + 2u * j) == i;
+            if (!dup) h ^= gcd_mix((uint32_t)i, verts + 40u * (uint32_t)i);   /* XOR again: out */
+        }
+    return h;
+}
+#endif
 /* the car mesh's records in the arena (built once; 0 if it cannot be) */
 static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcstate *c, uint32_t verts, uint32_t nv,
                                 uint32_t faces, uint32_t nf, uint32_t w1)
@@ -8574,6 +8645,23 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
                     if (!gca_refresh(e, i, A->info)) { A->refused++; c->refused_range++; return 0; }
                     A->refreshed++;
                 } else if (gca_car(verts)) { A->rebakes++; c->stale++; g->full = 1; return 0; }   /* baked before +1B084 ran */
+            }
+#endif
+#ifdef A4_CARDEFORM
+            {   uint32_t xc = 0;
+#ifdef A4_CARANIM
+                volatile struct gcanim *A = GCANIM;
+                if (A->magic == GCANIM_MAGIC && A->mi == i + 1u && A->verts == verts && A->ofs == e->ofs) xc = A->car;
+#endif
+                const uint32_t h = gcd_hash(verts, nv, xc);
+#ifdef A4_CARDEFORMCEN
+                {   /* bench: CRK1 [40] takes checked, [41] of them moved, [42] the last moved mesh | nv << 16, [43] its
+                     * frame, [44] meshes baked, [45] the last bake's mesh | nv << 16 */
+                    volatile uint32_t *C = crk_get();
+                    C[40]++; if (h != GCVH[i]) { C[41]++; C[42] = i | nv << 16; C[43] = ((volatile struct glr *)A4_GL_SCRATCH)->frames; }
+                }
+#endif
+                if (h != GCVH[i]) { c->refused_range++; return 0; }   /* moved since its bake: the game's this render */
             }
 #endif
 #ifdef A4_WHEELCEN
@@ -8709,6 +8797,16 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
         while (b) { if (x >= r + b) { x -= r + b; r = (r >> 1) + b; } else r >>= 1; b >>= 2; }
         me->rad = (uint16_t)(r + 1u > 0xFFFFu ? 0xFFFFu : r + 1u); }
     me->fp[0] = GO32(verts + 0x18u); me->fp[1] = GO32(verts + 0x1Cu); me->fp[2] = GO32(faces + 0xCu); me->fp[3] = GO32(faces + 0x30u);
+#ifdef A4_CARDEFORM
+#ifdef A4_CARANIM
+    GCVH[c->nmesh] = gcd_hash(verts, nv, acar);
+#else
+    GCVH[c->nmesh] = gcd_hash(verts, nv, 0u);
+#endif
+#ifdef A4_CARDEFORMCEN
+    crk_get()[44]++; crk_get()[45] = c->nmesh | nv << 16;
+#endif
+#endif
 #ifdef A4_DEDUPCEN
     dedup_note(GOBJ_ARENA + 12u * me->ofs, (const uint16_t *)me->gs, (const uint16_t *)me->gc, me->ng, 42u);
 #endif
@@ -8917,6 +9015,27 @@ static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t fac
         }
     }
     c->taken++;
+#ifdef A4_CARMESHLOG
+    {   /* bench (round 89, the owner's brake lights and bike): CUT1's place, 'CML1' -- [1] takes; per car mesh index mi
+         * (24 x 12 words from [4]): verts, nf | nv << 16, mode, the class word w1, the span mode ctx[0x64] at the take,
+         * its first face's descriptor, that descriptor's w-1 | h-1 << 16, its +0x28 word, its +0x2C word, takes, the
+         * last frame taken, the first frame taken */
+        volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
+        if (U[0] != 0x314C4D43u) { for (uint32_t k = 1; k < 300u; k++) U[k] = 0; U[0] = 0x314C4D43u; }
+        const uint32_t mi = (uint32_t)(me - GCMESH);
+        U[1]++;
+        if (mi < 24u) {
+            volatile uint32_t *w = U + 4u + 12u * mi;
+            const uint32_t d0 = GO32(faces + 0x30u);
+            const uint32_t *gx = (const uint32_t *)(uintptr_t)MESH->gctx;
+            w[0] = verts; w[1] = nf | nv << 16; w[2] = mode; w[3] = w1; w[4] = gx ? gx[0x64 / 4] : 0xFFFFFFFFu;
+            w[5] = d0; w[6] = d0 ? (GO32(d0 + 4u) | GO32(d0 + 8u) << 16) : 0u;
+            w[7] = d0 ? GO32(d0 + 0x28u) : 0u; w[8] = d0 ? GO32(d0 + 0x2Cu) : 0u;
+            if (!w[9]) w[11] = s->frames;
+            w[9]++; w[10] = s->frames;
+        }
+    }
+#endif
 #undef WHY
     return 1;
 }
@@ -9003,6 +9122,15 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
         MV[8] = it->M[6] << 2; MV[9] = it->M[7] << 2; MV[10] = it->M[8] << 2;
         MV[12] = it->M[9] << 16; MV[13] = it->M[10] << 16; MV[14] = it->M[11] << 16; MV[15] = FX;
         gl_matrixmode(GL_MODELVIEW); gl_loadmatrixx(MV);
+#ifdef A4_CARITEMTINT
+        {   /* bench (round 89, the owner's Z1000: the tank over the rider's back): each car item untextured in its own
+             * colour (item 0 red, 1 green, 2 yellow, 3 blue, 4 magenta, 5 cyan, 6 white, then again) -- which mesh
+             * draws which pixel of a bike and its rider */
+            const uint32_t q = (i % 7u) + 1u;
+            gl_disable(GL_TEXTURE_2D);
+            gl_color4x((q & 1u) ? FX : 0, (q & 2u) ? FX : 0, (q & 4u) ? FX : 0, FX);
+        }
+#endif
         gl_matrixmode(GL_TEXTURE); lw = -1; lh = -1;       /* the texture matrix reloaded under each car's */
         const uint32_t base = GOBJ_ARENA + 12u * me->ofs;
         gl_vertexptr(3, GL_SHORT, 12, (const void *)base);
@@ -9025,6 +9153,22 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
 #endif
             if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
             if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
+#ifdef A4_SPINCEN
+            if (me->gm1[k] & 2u) {   /* bench (round 89, the wheels): CRK1 [40] renders drawing an animated group, [41] of
+                                      * them with another tyre frame than the last such render's, [42] the frame (the
+                                      * group's live descriptor), [43] the last render counted, [44] calls of +1B084 with
+                                      * +1A8 set in that render (A4_CARANIM's) | the most in one render << 16 */
+                volatile uint32_t *C = crk_get();
+                const uint32_t d = GC_GD(me, k), fr = s->frames;
+                if (C[43] != fr) { C[43] = fr; C[40]++; if (d != C[42]) C[41]++; C[42] = d; }
+            }
+#endif
+#ifdef A4_ANIMTINT
+            /* bench (round 89, the owner: "the wheels don't spin"): the tyres' animated groups (A4_CARANIM's) magenta,
+             * untextured -- where the GPU shows them at all */
+            if (me->gm1[k] & 2u) { gl_disable(GL_TEXTURE_2D); gl_color4x(FX, 0, FX, FX); }
+            else { gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX); }
+#endif
 #ifdef A4_CARSTAGE
             {   /* bench (round 84, Dubai): the group's corners through the objects' staging, as gobj_flush draws */
                 const uint32_t *src = (const uint32_t *)(base + 36u * me->gs[k]);
@@ -9075,7 +9219,7 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
         gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX); gl_depthfunc(GL_GEQUAL);
     }
 #endif
-#ifdef A4_CARFLAT
+#if defined(A4_CARFLAT) || defined(A4_CARITEMTINT) || defined(A4_ANIMTINT)
     gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX);
 #endif
 #if defined(A4_CARPROBE2) && !defined(A4_CARPROBE3)
@@ -9347,6 +9491,9 @@ static void cvr_redraw(volatile struct glr *s)
             const uint32_t base = GOBJ_ARENA + 12u * me->ofs;
             gl_vertexptr(3, GL_SHORT, 12, (const void *)base);
             gl_texcoordptr(2, GL_SHORT, 12, (const void *)(base + 6u));
+#ifdef A4_CVRTINT
+            gl_disable(GL_TEXTURE_2D); gl_color4x(FX, 0, FX, FX);   /* bench (round 89): the redrawn car magenta */
+#endif
 #ifdef A4_M1SKY
             const uint32_t skyd = m1s_will(me, m1map, m1tab);
 #endif
@@ -9361,12 +9508,19 @@ static void cvr_redraw(volatile struct glr *s)
 #endif
                 if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
                 if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
+#ifdef A4_ANIMTINT
+                if (me->gm1[k] & 2u) { gl_disable(GL_TEXTURE_2D); gl_color4x(FX, 0, FX, FX); }   /* bench: as gcar_flush's */
+                else { gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX); }
+#endif
                 gl_drawarrays(GL_TRIANGLES, 3 * (int)me->gs[k], 3 * (int)me->gc[k]); draws++;
             }
 #ifdef A4_M1SKY
             if (skyd) { m1s_pass(s, me, skyd, base, m1map); lastid = 0xFFFFFFFFu; draws++; }
 #endif
         }
+#if defined(A4_CVRTINT) || defined(A4_ANIMTINT)
+    gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX);
+#endif
     v->k[4]++; v->k[5] += draws; v->k[7] += odraws;   /* k[7]: the objects' share (round 78b) */
     for (uint32_t j = 0; j < 6u; j++) v->ob[j] = 0;
     v->cb = 0; v->pend = 0;
@@ -12261,6 +12415,16 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
     for (uint32_t k = spr[8 / 4] + 1u; k > 1u; k >>= 1) hl++;
     int32_t S0 = wl <= 8 ? sl * (1 << (8 - wl)) : sl >> (wl - 8), S1 = wl <= 8 ? sr * (1 << (8 - wl)) : sr >> (wl - 8);
     int32_t T0 = hl <= 8 ? tt * (1 << (8 - hl)) : tt >> (hl - 8), T1 = hl <= 8 ? tb * (1 << (8 - hl)) : tb >> (hl - 8);
+#if defined(A4_BBREDRAWFIRST) && defined(A4_COVREDRAW) && defined(A4_MESH)
+    /* Round 89 (the owner: "Shadows in the brake lights when braking with the nissan"). A sprite over items the redraw
+     * will draw again kept its own depth, written over its whole quad (round 78), so the redraw leaves it -- and leaves
+     * whatever an untested element drew on those items before the sprite: the player's shadow, which the GPU draws
+     * after the car (the game before it), stayed on the car's rear inside each brake-light glow's rectangle (sh_z350:
+     * the shadow tinted, exactly those rectangles). Now such a sprite draws the batch and the redraw first, as a fill
+     * or a fade does (quad_push): the items are whole again under it, and it still writes its depth over them. A
+     * fade (KIND_ADDF) is quad_push's own case. */
+    if (kind != KIND_ADDF && MESH_ON() && cvr_hits(x0, y0, x1 - 1, y1 - 1)) { cvr_flush(s); CVR->k[2]++; }
+#endif
 #if defined(A4_MESH) && defined(A4_BBCELL)
     if (bbcell) {
         /* each row of cells, one quad per run of equal covers: its texture from the same lines as the whole
@@ -12564,13 +12728,21 @@ static void draw_run(uint32_t mat, uint32_t first, uint32_t count, uint32_t *st,
              * a) * a... = dst * 3/4 where alpha is 1 (drawn, not yet darkened), dst where it
              * is 3/4 (darkened once: alpha stays 3/4), and alpha 0 (the backdrop) stays 0. */
             gl_disable(GL_TEXTURE_2D); gl_enable(GL_BLEND); gl_blendfunc(GL_DST_COLOR, GL_ONE_MINUS_DST_ALPHA);
+#ifdef A4_SHADTINT
+            gl_color4x(0, 0, FX, (FX * 12) / 16);  /* bench (round 89, the brake lights): where the shadow lands, blue only */
+#else
             gl_color4x((FX * 12) / 16, (FX * 12) / 16, (FX * 12) / 16, (FX * 12) / 16);
+#endif
         }
 #endif
         else if (kind == KIND_SHAD) {
             /* dst * 12/16 in RGB, alpha * 1 */
             gl_disable(GL_TEXTURE_2D); gl_enable(GL_BLEND); gl_blendfunc(GL_ZERO, GL_SRC_COLOR);
+#ifdef A4_SHADTINT
+            gl_color4x(0, 0, FX, FX);              /* bench (round 89): blue only */
+#else
             gl_color4x((FX * 12) / 16, (FX * 12) / 16, (FX * 12) / 16, FX);
+#endif
             /* once a pixel a frame (the span's stamp map): pass where the stencil is 0,
              * then INCR it (func/op set at bring-up, cleared with the frame); without a
              * stencil, the depth stamp (shad_zstamp) */
@@ -13907,6 +14079,27 @@ void a4_gl_flush(void)
 #endif
 #ifdef A4_M1SKY
       m1s_capture(s);                                   /* round 88, after r91b: the next frame's reflection, this frame */
+#endif
+#ifdef A4_WHEELSHOW
+#ifndef A4_WHEELDESC
+#error "A4_WHEELSHOW reads A4_WHEELDESC's record"
+#endif
+      {   /* bench (round 89, the owner: "the wheels don't spin"): the player's two tyre frames (car+180[1], [2]) drawn
+           * into the frame after the composite, at (96, 112) and (160, 112), each at most 64 x 64 -- what each frame
+           * of the tyre's texture holds, in every shot */
+          const volatile uint32_t *U = (const volatile uint32_t *)A4_GL_CUT;   /* A4_WHEELDESC's: the car with +1A8 set */
+          const uint32_t bb = *(volatile uint32_t *)A4_GL_BB, car = U[0] == 0x31534457u ? U[2] : 0u;
+          if (car && bb && GO32(car + 0x1A8u))
+              for (uint32_t f = 1; f <= 2u; f++) {
+                  const uint32_t d = GO32(car + 0x180u + 4u * f);
+                  if (!d) continue;
+                  const uint32_t tw = GO32(d + 4u) + 1u, th = GO32(d + 8u) + 1u, px = GO32(d + 4u * TS_PIX);
+                  if (!px || tw > 1024u || th > 1024u) continue;
+                  for (uint32_t y = 0; y < th && y < 64u; y++)
+                      for (uint32_t x = 0; x < tw && x < 64u; x++)
+                          ((volatile uint16_t *)bb)[(112u + y) * VP_W + 32u + 64u * f + x] = ((const volatile uint16_t *)(uintptr_t)px)[y * tw + x];
+              }
+      }
 #endif
 #ifdef A4_PROF2D
 #ifdef A4_PROFSEG

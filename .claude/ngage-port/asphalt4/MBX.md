@@ -15228,6 +15228,50 @@ c. Not entered by the bench before: a session whose GL library is loaded by the 
   - braking_shadow (9 s) and braking 2026-11-23 (19 s), the 350Z: **while braking, a pale square-edged patch over the
     tail light** (the red lamp's shape replaced in part by a flat light block), not seen when not braking.
   - The wheels' spin (350Z, 599 GTB) is the owner's observation; the videos are too blurred to show it.
+- The owner then: "there are 28 vehicles in total, all unlocked: 24 cars and 4 bikes. Make sure the fixes work across
+  all vehicles". The bench's save (the owner's earlier upload) unlocks 7: Veyron, Mini, 350Z, SLK55, M3, Corvette, Ducati.
+
+### Round 89: the three bugs on r91f, read on the bench (C96, LA, '5' 40-50 s then '6' tapped: the brake, then reverse)
+New bench switches (a4_gl.c): A4_WHEELDESC (CUT1's place 'WDS1': the player's two tyre descriptors car+180[1], [2],
+their words and a hash of each one's texels), A4_WHEELSHOW (both tyre images drawn into the frame after the composite),
+A4_SPINCEN (CRK1 [40..45]: renders drawing a tyre group, those whose tyre frame differs from the last such render's,
++1B084's calls a render), A4_ANIMTINT (the tyre groups magenta, in both car draws), A4_CARITEMTINT (each car item its
+own colour), A4_CVRTINT (the cover redraw's cars magenta), A4_SHADTINT (the shadow blue instead of 3/4),
+A4_CARMESHLOG (CUT1's place 'CML1': each car mesh the GPU takes -- mode, class word, span mode, first texture, takes).
+Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
+- **The brake lights.** st_z350 (the handoff baseline, stock): braking, a white glow on each lamp, nothing else. C96
+  (wd_z350): the same glows and **a darker translucent rectangle beside each lamp**. KINDVIS: the glows are the game's
+  sprites. cv_z350 (A4_CVRTINT): the cover redraw (round 78) repaints the whole car **except two rectangles at the
+  lamps**. sh_z350 (A4_SHADTINT): those rectangles are **the player's shadow, on the car**. Cause: the GPU draws the
+  car before the table and the shadow after it (the game the shadow first), and the redraw puts the car back over it;
+  a sprite over items pending the redraw writes its own depth over its whole quad so the redraw leaves it (a4_gl_bb,
+  round 78) -- the brake glows' quads, so inside them the redraw never erased the shadow. **Fix, A4_BBREDRAWFIRST**: a
+  sprite over pending items draws the batch and the redraw first (as a fill or a fade already does in quad_push), then
+  keeps its depth as before. bfs_z350 (with the tint): no shadow on the car, braking; bf_z350: the lamps as stock.
+- **The bike.** ct_duc (A4_CARITEMTINT, the Ducati): the player's bike untinted forward -- cm_duc (A4_CARMESHLOG) says
+  why: the bike is the GPU's (mesh 1, 694 faces, a 256x256 mode-2 paint, taken in 519 renders), and the redraw paints
+  it again textured; braking, coloured blocks over the bike's rear = the same blocked rectangles as the 350Z's.
+  wc_duc (A4_WHEELCEN, the Ducati): **mesh 2 (332 faces, 170 vertices -- the rider, by size) 90 takes away from its
+  bake, 642 corners moved** (vertex 78: 0,42,21 -> 0,41,20), in the braking stretch -- the game moves that mesh's
+  vertices (no other path of ours follows them: +1B084's 24 tyre vertices are A4_CARANIM's) and the GPU drew it in the
+  pose of its bake. The owner's Z1000 (the tank over the rider's back, in some frames) fits a rider drawn in a stale
+  pose; the Z1000 is not on the bench's save, so not shown. **Fix, A4_CARDEFORM**: each car mesh's vertex positions
+  hashed at its bake and at every take (order-free: index and x y z mixed a vertex, XORed; the 24 tyre vertices left
+  out of both), kept in the 24 free words between GCBND and GCMESH (0x4665A0); a different hash hands that mesh to the
+  game for the render, as a failed gca_refresh does. df (A4_CARDEFORMCEN, CRK1 [40..45]): **Ducati 217 of 4,808 takes
+  moved, every one mesh 2**; 350Z 0 of 2,663; Veyron 0 of 3,009.
+- **The wheels.** wc350 (A4_WHEELCEN, the 350Z): 0 changed takes of 2,629 -- every corner, texcoord and tyre frame the
+  GPU draws is the game's own at that take. wd (A4_WHEELDESC, all seven vehicles): the tyre frames are the same two
+  64x64 descriptor slots for every vehicle, each car's own images loaded into them, frame 1 and frame 2 differing in
+  every one. ws (A4_WHEELSHOW): the 350Z's two frames are a five-spoke rim at two angles, as the Mini's. sp
+  (A4_SPINCEN): the drawn tyre frame changes in 127 of 300 renders (350Z) and 102 of 285 (Mini; the rest at a stop or
+  before the start), +1B084 once a render for both. at (A4_ANIMTINT, both draws): the tyre faces show in no chase or
+  reverse shot of either car -- only from the side. **Not reproduced: on the bench the GPU spins the 350Z's tyres
+  exactly as the game sets them, as it does the Mini's.** The 599 GTB is not on the save.
+- **C99 = C96 + -DA4_CARDEFORM -DA4_BBREDRAWFIRST** (scratch 0x1C3000, as r91f): sha256 5db4e27f9fb6cca2..., 1,026,684
+  bytes (C96 1,025,816). C90-C98 rebuild to their bytes (C96: 47a0f91a..., r91f's). Cost: the hash ~15 instructions a
+  vertex over ~2,000-2,500 vertices a render (the player's ~940, the opponents' ~200 each); the earlier redraw an extra
+  batch draw when a sprite meets pending items (braking, nitro). Not covered: the 21 vehicles the bench's save lacks.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
