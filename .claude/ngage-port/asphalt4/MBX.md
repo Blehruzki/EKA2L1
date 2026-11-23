@@ -15296,3 +15296,9 @@ c. Not entered by the bench before: a session whose GL library is loaded by the 
   with ten times pf96's software billboard rows (bb_row2 0.09 -> 1.04%); the shares of content-bound routines differ
   run to run by ~1% (pf97's two runs: 2.7% and 1.0% with the first form). The lines' bands are tall (a light streak is
   a long diagonal), and a band runs the copy's whole set-up and row loop for its rows -- the next cost to cut.
+- **Every destination** (alltracks_ap2, career, 60 s each: LA, New York, Paris, Monte Carlo, Dubai, Shanghai): at97
+  (the check build) listed nothing on any of them, and atcc (C96 + A4_COPYCEN) says why -- 14,085 alpha triangles, **0
+  copies kept below the GPU's sky, 0 additive triangles**: the day tracks' see-through scenery lies within the
+  backdrop's rows (round 88's GPU sky already makes it GPU-only). The deferral is a night-scene gain -- Instant Play's
+  night Paris, its trees past the camera and its glows below the sky line -- and costs those tracks only the hook's
+  few words a triangle. The boot's usual fault (ROM code 0x8039F834 reading 0x34, in every run since C96) only.
