@@ -25,6 +25,7 @@ print('  sky check: frames %d, backdrop pixels differing %d (frames with any %d,
 print('  frames with the GPU backdrop %d, software sky %d, composites forced by a triangle %d; uploads %d (changed %d)' % (c[67], c[68], c[69], c[58], c[59]))
 print('  A4_FLAREFLUSH: flare composites %d; after them triangles %d, billboards %d' % (c[72], c[70], c[71]))
 print('  +3059E (the sun): calls %d, in a GPU-sky frame before its composite %d; frames kept software for it %d' % (c[65], c[66], c[64]))
+print('  round 89 (A4_SKYSTORESKIP): the skipped stores put for a bake of the screen\'s table %d, the sky replayed for one before a GPU frame %d' % (c[75], c[76]))
 if os.environ.get('SKYCHK_ALL'):                 # every capture's running totals, in frame order (a session's tracks)
     rows = []
     for f in fs:

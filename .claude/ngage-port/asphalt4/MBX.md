@@ -15328,5 +15328,43 @@ c. Not entered by the bench before: a session whose GL library is loaded by the 
   own per-triangle work. A sheet built whole into a fresh texture avoids round 25's ~100 ms rewrites, but nothing on
   file says fewer calls through a big texture save time on the MBX. Not built; the measure first.
 - **euser in the whole frame** (pf96 4.69%): one loop, 4.1% -- RM-320 euser's block memcpy (0x803A27B8, ldm/stm of 64
-  bytes with PLD; its bulk path enters at 0x803A26E0), ~1.6 ms a render on the bench. Whose copies: an
-  EKA2L1_PCTRACE_REGS trace at its entry, armed at the race's step, queued.
+  bytes with PLD; its bulk path enters at 0x803A26E0), ~1.6 ms a render on the bench. Whose copies: mc96 (an
+  EKA2L1_PCTRACE_REGS trace at its entry, armed at the race's step): **95% of the bytes from the sky routine's three
+  band memmoves** -- +36124 (640-byte rows, 70%), +36152 and +3615E (a row split at the image's wrap, 25% and 5%),
+  rows 19-154 of the surface (the band moves with the camera's pitch). A4_GPUSKY records them (a4_sky_mv) and draws
+  the backdrop on the GPU, but since round 88 lets them run as well (SKY_SKIP 0: the player's paint read rows 0-66 as
+  its mode-1 table, and with the rows stale it re-baked every few frames and reflected the HUD).
+- **Do they still need to run? (A4_SKYSTORESKIP: the stores skipped, round 88's first C89.)** Since A4_M1SKY the
+  paint is made once and its reflection is captured from the composite. ab97a / ab97s (C97 / C97 + the skip, night
+  Paris 240 s): paints made 1, captures 1.5-1.6 ms each and every second pass drawn in both, **m1_rebakes 0 in both**;
+  the +31A26/50 timer ~0.8 -> ~0.4 ms a scene; the pictures normal.
+- **Who reads the skipped rows** (A4_SKYRGATE, bench, new: EKA2L1_WATCHGATE's word, 0x5C30F0, open from the frame's
+  first recorded sky store to the composite or the stores' replay; with EKA2L1_RWATCH over the whole surface, every
+  (pc, word) read then). rg97 (night Paris 150 s, 1,110 GPU-sky frames): five readers, **all pixel blends that write
+  back the pixel they read** -- bb_row2 (a billboard's software row), the alpha span (+33F2A), the anti-aliased line
+  (+2BE4C, +2C07A, +2C09A) -- and **none above row 79**; whatever they leave in the backdrop's rows the composite
+  overwrites. rg97at (the six career destinations, 60 s each, 2,297 GPU-sky frames): **no read at all**. rg98rev
+  (C98, the Mini reversing in LA, 948 frames): the same blends (and the additive span +33D94), rows 164 and down. (The
+  blob's PCs in the log are 0x70000000 + its link address - 0x8000: the first reading took 0x700FAE68 for a lifted
+  scene's branch; it is bb_row2's ldrh.)
+- **The reader left: a mode-1 bake on the screen's table.** A4_M1HOOK leaves the game's near-cut paint faces (reverse
+  view, a car nearer the camera than the GPU's near plane) at var 1, a bake that reads rows 0-66 -- with the skip, the
+  last frame's picture and HUD. **sky_due** (a4_gl.c): before tex_make or the re-bake's signature reads a table that is
+  the back buffer, in a frame whose stores were skipped, the recorded stores are put (sky_put, once a frame; census
+  0x412D00 [75]); before the GPU frame began, the sky is replayed to software as for any software write then ([76]).
+  The bench never reached that face (c97rev / c98rev / rg98rev: [75] 0, [76] 0, no game-drawn paint triangle), so
+  sky_put itself was checked: **A4_SKYPUTCHECK** (bench, new; C96 + A4_SKYSTORESKIP + A4_SKYCHECK) puts the stores at
+  each GPU frame's start and compares the rows with the GPU's backdrop read back (round 88's check, which found that
+  backdrop equal to the routine's own stores): **pc98 night Paris 691 frames, pc98at six destinations 922 frames: 0
+  pixels differing**; its mutant (A4_SKYPUTMUTANT: one band row left out every 64th frame) 2,342 pixels in 8 frames.
+  A software write into rows 0-66 between the routine and such a bake would be put over (the table holds the sky
+  where C97's held that write; the composite overwrites both).
+- **pf98 / pf98b (the pf97c profile on C98)**: euser 4.87% -> 0.19% / 0.17%, the routine's own +35FDA 0.49 -> 0.06%;
+  sky_put 0.20% in pf98 (21 frames replayed to software, the band copied a halfword at a time -- now by words, gone
+  from pf98b). The shares of the per-render routines move more than that between routes (the convert 16.6 / 18.9 /
+  15.9%), so the gain is read from the telemetry's mean render time over each run: **C97 38.5 / 41.3 / 38.9 ms (pf97c,
+  ab97a, c97rev), C98 36.8 / 37.9 / 39.0 / 37.3 ms (pf98, ab97s, pf98b, c98rev); the same scripted drive (c97rev /
+  c98rev, LA by day, the Mini) 38.9 -> 37.3 ms: ~1.7-1.9 ms a render (~5%) on the bench**, every destination (the
+  band is drawn by day too).
+- **C98 = C97 + -DA4_SKYSTORESKIP.** C90-C97 rebuild to their bytes with the code in the tree. A guard added on the
+  way: A4_SKYCHECK and A4_BLDEFER both keep state at 0x460000 and nothing stopped a build of both -- now an #error.

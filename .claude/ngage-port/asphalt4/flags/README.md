@@ -164,3 +164,13 @@ the holes against what the composite and fill wrote, and the span's writes outsi
 [121]) -- all must stay 0. `-DA4_DEFERGATE` (EKA2L1_WATCHGATE's word, 0x5C30F0, open while copies are listed: with
 EKA2L1_WATCH over the surface, what else writes then). `-DA4_AALINEALL` (every line draws the list first).
 `-DA4_COPYCEN` and `-DA4_DEFERCEN` (the censuses that led to it, CRK1 [40..47]).
+
+C98.flags = C97.flags with `-DA4_SKYSTORESKIP` (round 89): the sky routine's stores (the top fill, the band's three
+memmoves +36124 / +36152 / +3615E, the bottom fill) recorded and not run in a GPU-sky frame -- the composite overwrites
+those rows with the GPU's backdrop. A mode-1 bake about to read the back buffer as its table has them put first
+(sky_due; census 0x412D00 [75] puts, [76] replays before a GPU frame; tools/skychk.py). Scratch as C97
+(`A4_SCRATCH_SIZE=0x1C8000`). Bench only: `-DA4_SKYRGATE` (EKA2L1_WATCHGATE's word 0x5C30F0 open from the first
+recorded sky store to the composite: with EKA2L1_RWATCH over the surface, every read of the skipped rows);
+`-DA4_SKYPUTCHECK` with `-DA4_SKYCHECK` (on C96 + the skip, not with A4_BLDEFER: both keep state at 0x460000): the
+stores put at each GPU frame's start and compared with the GPU's backdrop ([51] must stay 0); `-DA4_SKYPUTMUTANT` its
+test (a band row left out every 64th frame).

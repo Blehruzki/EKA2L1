@@ -4846,8 +4846,15 @@ static inline int m1s_inpd(volatile struct m1sky *S, uint32_t d) { return d && (
 #endif
 /* (Re)make slot i's GL texture from ts: the alpha-map texture (var 2), the mode-1 bake
  * (var 1) or the plain/colour-key one, and record what it was made from. */
+#if defined(A4_GPUSKY) && defined(A4_SKYSTORESKIP) && (!defined(A4_SKYCHECK) || defined(A4_SKYPUTCHECK))
+#define SKY_DUE 1                                   /* the sky's stores skipped (SKY_SKIP 1): a bake of the screen's table puts them first */
+static void sky_due(void);
+#endif
 static void tex_make(volatile struct glr *s, int i, uint32_t id, const uint32_t *ts, const uint16_t *m1map, const uint16_t *m1tab, int var)
 {
+#ifdef SKY_DUE
+    if (var == 1 && (uint32_t)(uintptr_t)m1tab == *(volatile uint32_t *)A4_GL_BB) sky_due();
+#endif
     uint32_t w = ts[1] + 1, h = ts[2] + 1, total = w * h;
     const uint16_t *px16 = (const uint16_t *)ts[TS_PIX];
     /* The game's software filler treats texel value 0 (pure black) as transparent.
@@ -4985,6 +4992,9 @@ static int tex_index(volatile struct glr *s, uint32_t tsaddr, const uint16_t *m1
         if (m1 && s->cache_fr[i] != s->frames && (n < M1_BIG || s->frames - s->cache_fr[i] >= M1_BIG_EVERY)) {
             s->cache_fr[i] = s->frames;
             const uint16_t *map2 = m1map, *tab = m1tab;
+#ifdef SKY_DUE
+            if ((uint32_t)(uintptr_t)tab == *(volatile uint32_t *)A4_GL_BB) sky_due();
+#endif
 #ifdef A4_M1LIVE
             if (!m1l_has((uint32_t)i) && m1_sig(map2, tab, s->cache_m1r[i], n) != s->cache_ck[i]) {   /* (noted: m1l_refresh's) */
 #else
@@ -5636,6 +5646,7 @@ struct skys {
     uint32_t tex, tw2, th2, tpix, twh, thash;  /* the sky texture: its GL name, size (log2), what it holds */
     uint32_t p0;                               /* the frame's prims once its start (backdrop, list) is drawn */
     uint32_t bb2f, bb2n;                       /* round 88: the frame of the last +3059E call, calls seen */
+    uint32_t put;                              /* round 89 (SKY_DUE): the recorded stores put in this frame */
 };
 #define SKYS ((volatile struct skys *)0x00412840u)
 _Static_assert(0x00412840u + sizeof(struct skys) <= 0x00412A00u, "the sky record past its block (A4_PERF at 0x412C00)");
@@ -5683,10 +5694,11 @@ static void sky_check_expect(int32_t y0, int32_t y1)
 #if !defined(A4_GPUSKY) || !defined(A4_LINEFILL) || !defined(A4_PX6) || !defined(A4_IMM) || !defined(A4_LEAN) \
     || defined(A4_BLENDCEN) || defined(A4_CECHECK) || defined(A4_BBCHECK) || defined(A4_DEFERCEN) || defined(A4_COPYCEN) \
     || defined(A4_M1SKYFACE) || defined(A4_M1MAPCHG) || defined(A4_CARWHY) || defined(A4_M1SKYCEN) || defined(A4_DARKCEN) \
-    || defined(A4_OBJMODECEN) || defined(A4_F40CEN) || defined(A4_M1PDCEN) || defined(A4_DUALCAP) || defined(A4_LINEFILLVIS)
-#error "A4_BLDEFER needs the GPU sky, the crack fill, the ARMv6 composite and the lean path; state at 0x460000, CRK1 [40..44]"
+    || defined(A4_OBJMODECEN) || defined(A4_F40CEN) || defined(A4_M1PDCEN) || defined(A4_DUALCAP) || defined(A4_LINEFILLVIS) \
+    || defined(A4_SKYCHECK)
+#error "A4_BLDEFER needs the GPU sky, the crack fill, the ARMv6 composite and the lean path; state at 0x460000 (A4_SKYCHECK's row hashes too), CRK1 [40..44]"
 #endif
-#if defined(A4_DEFERGATE) && (defined(A4_SKYGATE) || defined(A4_BLDEFERCHK))
+#if defined(A4_DEFERGATE) && (defined(A4_SKYGATE) || defined(A4_SKYRGATE) || defined(A4_BLDEFERCHK))
 #error "A4_DEFERGATE uses A4_SKYGATE's gate word; build it alone"
 #endif
 #if defined(A4_BLDEFERCHK) && (defined(A4_BLURCHECK) || defined(A4_SNOWCHECK) || defined(A4_BBPROBE) \
@@ -10369,14 +10381,28 @@ static void quad_push(volatile struct glr *s, int32_t x0, int32_t y0, int32_t x1
 #ifdef A4_SKYCEN
 #error "A4_GPUSKY counts at 0x412D00 [58..63], A4_SKYCEN's words"
 #endif
-#ifdef A4_SKYCHECK
+#if defined(A4_SKYPUTCHECK) && (!defined(A4_SKYCHECK) || !defined(A4_SKYSTORESKIP))
+#error "A4_SKYPUTCHECK: A4_SKYCHECK's comparison of the skipped stores as sky_put writes them (with A4_SKYSTORESKIP)"
+#endif
+#if defined(A4_SKYCHECK) && !defined(A4_SKYPUTCHECK)
 #define SKY_SKIP 0
+#elif defined(A4_SKYCHECK)
+#define SKY_SKIP 1                                  /* bench (round 89): the stores skipped and put by sky_put at the check */
+#endif
+#ifdef A4_SKYCHECK
 #if defined(A4_SKYCEN) || defined(A4_MESHMEMO)
 #error "A4_SKYCHECK keeps its row hashes at 0x460000 (A4_SKYCEN's bitmap, the memo's home) and counts at 0x412D00 [50..57]"
 #endif
 #define SKYRH ((volatile uint32_t *)0x00460000u)    /* 240 row hashes and the armed word */
 #elif defined(A4_SKYSTORESKIP)
-#define SKY_SKIP 1                                  /* bench: the routine's stores skipped (round 88's first C89) */
+/* Round 89 (C98): the routine's stores skipped again (round 88's first C89 did, as a bench switch then). The rows they
+ * fill are the GPU's backdrop rows, all overwritten by the composite; since A4_M1SKY the player's paint is made once
+ * (its reflection captured from the composite), so its table no longer reads them every frame (m1_rebakes 0 with the
+ * skip; the read watch from the first store to the composite, rg97 / rg97at / rg98rev: only pixel blends that write
+ * back what they read, none above row 79 in night Paris, none at all on the six career tracks). The one
+ * reader left, a mode-1 bake on the screen's table (the near-cut paint faces in reverse), gets the stores put first
+ * (sky_due). The three band memmoves (+36124 / +36152 / +3615E, euser's block copy) were 4% of the frame. */
+#define SKY_SKIP 1
 #else
 /* Round 88: the routine's own stores run as well (as A4_SKYCHECK's do). The screen's top rows are a table the game
  * reads in the frame: the player's car paint is a 256 x 256 mode-1 texture whose table is the screen surface itself
@@ -10406,6 +10432,9 @@ static void sky_decide(const uint32_t *rsp)
     const uint32_t *scr = (const uint32_t *)rsp[0x48 / 4];          /* the screen's width and height words */
     k->fb = ctx[0x4c / 4]; k->hdr = arg0[8 / 4]; k->flag = rsp[0x70 / 4];
     k->top_b = 0; k->bot_b = 0; k->nrun = 0; k->yb = 0;
+#if SKY_SKIP
+    k->put = 0;
+#endif
     const uint16_t *hd = (const uint16_t *)k->hdr;
     uint32_t why = 0;
     if (a4_gl_iat_ptr()[0] < 0x10000u || s->up != A4_GL_MAGIC) why = 1;      /* no GL */
@@ -10424,25 +10453,69 @@ static void sky_decide(const uint32_t *rsp)
     else if (k->bb2n && s->frames - k->bb2f < 128u) why = 8;
     k->why = why;
     k->state = why ? SK_SW : SK_REC;
+#ifdef A4_SKYRGATE
+    /* bench (round 89): the EKA2L1_WATCHGATE word open from the frame's first recorded sky store to the composite (or
+     * the stores' replay), so an EKA2L1_RWATCH over the surface names every read of the rows the skipped stores leave
+     * holding the last frame (A4_SKYSTORESKIP) */
+    if (!why) *(volatile uint32_t *)0x005C30F0u = 1u;
+#endif
     if (why) SKYCK2[68]++;
     if (why == 8) SKYCK2[64]++;                  /* census [64]: frames whose sky stayed software for a sun (why 8) */
 }
+#if SKY_SKIP
+#ifdef A4_SKYPUTMUTANT
+#define SKY_PUT_ROWS(k, i) ((k)->rows[i] - ((SKYCK2[50] & 63u) == 7u && (i) == 0u ? 1u : 0u))   /* bench: the put check's own test */
+#else
+#define SKY_PUT_ROWS(k, i) ((k)->rows[i])
+#endif
+/* a band row as the routine's memmove copies it: n bytes (a multiple of 4), both ends halfword-aligned -- by words
+ * where the two agree mod 4 (round 89: the halfword loop made a replay ~0.2% of pf98's frame) */
+static void sky_put_row(uint32_t d, uint32_t q, uint32_t n)
+{
+    if (((d ^ q) & 3u) == 0u) {
+        if (d & 2u) { *(volatile uint16_t *)d = *(const uint16_t *)q; d += 2u; q += 2u; n -= 2u; }
+        for (; n >= 4u; n -= 4u, d += 4u, q += 4u) *(volatile uint32_t *)d = *(const uint32_t *)q;
+        if (n) *(volatile uint16_t *)d = *(const uint16_t *)q;
+    } else
+        for (; n; n -= 2u, d += 2u, q += 2u) *(volatile uint16_t *)d = *(const uint16_t *)q;
+}
 /* the stores recorded so far, in software (in the routine's order: top fill, band, bottom fill) */
+static void sky_put(volatile struct skys *k)
+{
+    if (k->top_b) for (volatile uint32_t *p = (volatile uint32_t *)k->top_a; p < (volatile uint32_t *)k->top_b; p++) *p = k->top_c;
+    for (uint32_t i = 0; i < k->nrun; i++)
+        for (uint32_t r = 0; r < SKY_PUT_ROWS(k, i); r++) sky_put_row(k->dst[i] + r * 2u * VP_W, k->src[i] + r * k->sst[i], k->n[i]);
+    if (k->bot_b) for (volatile uint32_t *p = (volatile uint32_t *)k->bot_a; p < (volatile uint32_t *)k->bot_b; p++) *p = k->bot_c;
+    k->put = 1;
+#ifdef A4_SKYRGATE
+    *(volatile uint32_t *)0x005C30F0u = 0u;          /* bench: the rows are the routine's again */
+#endif
+}
+#endif
 static void sky_replay(volatile struct skys *k)
 {
 #if SKY_SKIP
-    if (k->top_b) for (volatile uint32_t *p = (volatile uint32_t *)k->top_a; p < (volatile uint32_t *)k->top_b; p++) *p = k->top_c;
-    for (uint32_t i = 0; i < k->nrun; i++)
-        for (uint32_t r = 0; r < k->rows[i]; r++) {
-            volatile uint16_t *d = (volatile uint16_t *)(k->dst[i] + r * 2u * VP_W);
-            const uint16_t *q = (const uint16_t *)(k->src[i] + r * k->sst[i]);
-            for (uint32_t j = 0; j < k->n[i] / 2u; j++) d[j] = q[j];
-        }
-    if (k->bot_b) for (volatile uint32_t *p = (volatile uint32_t *)k->bot_a; p < (volatile uint32_t *)k->bot_b; p++) *p = k->bot_c;
+    if (!k->put) sky_put(k);
 #endif
     k->state = SK_SW;
     SKYCK2[68]++;
 }
+#ifdef SKY_DUE
+/* Round 89. A mode-1 bake (tex_make, or the re-bake's signature) is about to read the screen's back buffer as its table
+ * -- the reflection's source rows 0-66, the game's near-cut paint faces in reverse (A4_M1HOOK leaves them var 1) -- in
+ * a frame whose sky stores were skipped: those rows still hold the last frame's picture, HUD and all (round 88's
+ * C89). In a GPU frame the recorded stores are put first, once a frame (census 0x412D00 [75]); before one began,
+ * the sky goes software as for any software write then ([76]). A software write into those rows between the
+ * routine and the bake (the composite overwrites them all the same) is put over -- the table holds the routine's sky
+ * where SKY_SKIP 0's held that write. After a flush the rows are the composite's, as they were. */
+static void sky_due(void)
+{
+    volatile struct skys *k = SKYS;
+    if (k->put || ((volatile struct glr *)A4_GL_SCRATCH)->flushed) return;
+    if (k->state == SK_GPU) { sky_put(k); SKYCK2[75]++; }
+    else if (k->state == SK_REC) { sky_replay(k); SKYCK2[76]++; }
+}
+#endif
 int a4_sky_top(const uint32_t *blk)                 /* r0 the fill's end, r1 its colour pair, r4 its start */
 {
     volatile struct skys *k = SKYS;
@@ -10568,6 +10641,9 @@ static void sky_check_begin(volatile struct skys *k)
     volatile uint32_t *ck = SKYCK2;
     volatile uint16_t *fb = (volatile uint16_t *)k->fb;
     uint32_t *rb = (uint32_t *)A4_GL_READBUF, bad = 0, unc = 0;
+#ifdef A4_SKYPUTCHECK
+    if (!k->put) sky_put(k);                        /* bench (round 89): the skipped stores as sky_due would put them */
+#endif
 #ifdef A4_SKYCHECK_MUTANT
     if ((ck[50] & 63u) == 7u) { fb[100 * VP_W + 5] ^= 0x0020u; ck[57]++; }   /* the check's own test */
 #endif
@@ -13010,7 +13086,7 @@ static void composite_rows(volatile struct glr *s, uint32_t miny, uint32_t maxy)
 #ifdef A4_DEFERGATE
     *(volatile uint32_t *)0x005C30F0u = 0u;          /* bench: the gate shut before the composite writes */
 #endif
-#ifdef A4_SKYGATE
+#if defined(A4_SKYGATE) || defined(A4_SKYRGATE)
     *(volatile uint32_t *)0x005C30F0u = 0u;          /* bench: the watch's gate closed before the composite writes */
 #endif
 #ifdef A4_DUALCAP
