@@ -285,8 +285,8 @@ if mode in ('lines', 'shadchk', 'gobjchk', 'carchk', 'objwhy', 'blendcen', 'ngwh
             if mode == 'carchk':    # round 86, bench A4_CAREARLYCHECK: [40..43] are its
                 print('  early car take check (bench): judged inside %d, of them culled by the routine %d (unsound); not certain %d' % (c[40], c[41], c[42]))
             elif mode in ('defer', 'deferchk'):   # round 89, A4_BLDEFER: [40..44] are its; A4_BLDEFERCHK (bench): [45..47]
-                print('  see-through copies deferred (A4_BLDEFER, from the boot): listed %d, drawn again after the composite %d (%d rows), drawn whole before another software draw %d, in bands %d (%d rows), lists dropped %d'
-                      % (c[40], c[41], c[42] & 0xFFFF, c[43], c[44] >> 16, c[42] >> 16, c[44] & 0xFFFF))
+                print('  see-through copies deferred (A4_BLDEFER, from the boot): listed %d, drawn again after the composite %d (%d rows), drawn whole before another software draw %d, in bands %d (%d rows; %d left alone, drawn there already), lists dropped %d'
+                      % (c[40], c[41], c[42] & 0xFFFF, c[43] & 0xFFFF, c[44] >> 16, c[42] >> 16, c[43] >> 16, c[44] & 0xFFFF))
                 if mode == 'deferchk':
                     print('  deferral check (bench): inputs compared %d, differing %d; hole pixels changed under a listed copy %d; pixels changed before an early draw %d'
                           % (c[45] >> 16, c[45] & 0xFFFF, c[46], c[47]))

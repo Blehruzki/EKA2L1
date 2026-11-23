@@ -5671,8 +5671,9 @@ static void sky_check_expect(int32_t y0, int32_t y1)
  * listed copy, the two-scale blit) has the game draw the list first, whole, as before; a billboard's blit or an
  * anti-aliased line over a listed copy has every listed copy drawn on its rows only (a band, logged so that those rows
  * are not drawn again). CRK1 [40] copies listed, [41] drawn again after the composite, [42] rows drawn again (low
- * half; high half: rows drawn in bands), [43] copies drawn whole before another software draw, [44] lists dropped (a
- * frame that never composited; high half: copies drawn in bands). State at 0x460000 (only the bench's checks use it otherwise): [0]
+ * half; high half: rows drawn in bands), [43] copies drawn whole before another software draw (low half), [44] lists dropped (a
+ * frame that never composited; high half: copies drawn in bands; [43]'s high half: copies a band left alone, their
+ * rows there drawn by an earlier band). State at 0x460000 (only the bench's checks use it otherwise): [0]
  * the frame, [1] entries, [2] the replay mode (1: whole, 2: the rows with a hole), [3] the hook's flags, [4] the
  * hook's call (a cut triangle's pieces are one call), [5] 'DEF1', [8..15] the rows with a hole; the hole mask at
  * 0x461400 (a bit a pixel: undrawn and not filled), the row kept at 0x463A00; 128 entries of 36 words past the old
@@ -5845,14 +5846,15 @@ static void def_draw(uint32_t k, uint32_t mode)
 }
 /* the game draws the listed copies now, whole and in order: another software draw into the frame comes next (why:
  * 0 the list full, 1 a triangle left to software, 2 a billboard's blit, 3 the two-scale blit, 4 no composite, 5 an
- * anti-aliased line, CFakeZAALine3DGradient's) */
+ * anti-aliased line, CFakeZAALine3DGradient's, 6 a billboard's blit and 7 a fill into the 3D surface at another row
+ * length) */
 static void def_flush(uint32_t why)
 {
     const uint32_t n = def_n();
     if (!n) return;
 #ifdef A4_BLDEFERCHK
     dfk_note_init();
-    DFK_NOTE[95u + (why < 6u ? why : 5u)]++;
+    if (why < 6u) DFK_NOTE[95u + why]++; else DFK_NOTE[116] += why == 6u ? 1u : 0x10000u;   /* [116]: 6 low, 7 high */
     for (uint32_t k = 0; k < n; k++) {
         dfk_cmp(k);
         def_dr(k);
@@ -5910,14 +5912,41 @@ static void def_band(int32_t ya, int32_t yb, uint32_t why)
     dfk_note_init();
     DFK_NOTE[95u + (why < 6u ? why : 5u)]++;
     for (uint32_t k = 0; k < n; k++)                 /* changed since the copy's turn (or the last band), on these rows */
-        if (dfk_box(DEF_E(k)) != DFK_B[k]) { def_dr(k); crk_get()[47] += dfk_diff_rows(k, (uint32_t)ya, (uint32_t)yb); }
+        if (dfk_box(DEF_E(k)) != DFK_B[k]) {
+            def_dr(k);
+            const uint32_t d = dfk_diff_rows(k, (uint32_t)ya, (uint32_t)yb);
+            crk_get()[47] += d;
+            if (d && DFK_NOTE[101] < 2u) {           /* the first such pixel: where, what, the band and its cause */
+                volatile uint32_t *e = DEF_E(k);
+                const volatile uint16_t *fb = (const volatile uint16_t *)(uintptr_t)*(volatile uint32_t *)A4_GL_BB;
+                for (uint32_t y = (e[2] & 0xFFFFu) > (uint32_t)ya ? e[2] & 0xFFFFu : (uint32_t)ya; y <= e[2] >> 16 && y <= (uint32_t)yb; y++) {
+                    if ((DEF_DR[y >> 5] >> (y & 31u)) & 1u) continue;
+                    uint32_t x = e[3] & 0xFFFFu;
+                    while (x <= e[3] >> 16 && fb[y * FB_STRIDE + x] == DFK_SNAP[y * FB_STRIDE + x]) x++;
+                    if (x > e[3] >> 16) continue;
+                    volatile uint32_t *q = DFK_NOTE + 102u + DFK_NOTE[101] * 7u;
+                    q[0] = x | y << 16; q[1] = fb[y * FB_STRIDE + x] | (uint32_t)DFK_SNAP[y * FB_STRIDE + x] << 16;
+                    q[2] = (e[1] & 0xFFFFu) | why << 16 | k << 20 | n << 26; q[3] = e[2]; q[4] = e[3];
+                    q[5] = (uint32_t)ya | (uint32_t)yb << 16; q[6] = DEF_BAND[0] | 0x80000000u;   /* a band's note */
+                    DFK_NOTE[101]++;
+                    break;
+                }
+            }
+        }
 #endif
     DEF_BR[0] = (uint32_t)ya; DEF_BR[1] = (uint32_t)yb;
     uint32_t drawn = 0;
     for (uint32_t k = 0; k < n; k++) {
         volatile uint32_t *e = DEF_E(k);
-        if ((int32_t)(e[2] >> 16) < ya || (int32_t)(e[2] & 0xFFFFu) > yb) continue;
-        def_dr(k); def_draw(k, 3u); drawn++;
+        const int32_t ra = (int32_t)(e[2] & 0xFFFFu) > ya ? (int32_t)(e[2] & 0xFFFFu) : ya;
+        const int32_t rb = (int32_t)(e[2] >> 16) < yb ? (int32_t)(e[2] >> 16) : yb;
+        if (ra > rb) continue;                       /* none of its rows in the band */
+        if (def_dr(k)) {                             /* every one of them drawn by an earlier band: nothing to do */
+            int32_t y = ra;
+            while (y <= rb && ((DEF_DR[(uint32_t)y >> 5] >> ((uint32_t)y & 31u)) & 1u)) y++;
+            if (y > rb) { crk_get()[43] += 0x10000u; continue; }
+        }
+        def_draw(k, 3u); drawn++;
     }
     DEF_BAND[1u + 2u * nb] = (uint32_t)ya | (uint32_t)yb << 16; DEF_BAND[2u + 2u * nb] = n;
     DEF_BAND[0] = nb + 1u;
@@ -6144,8 +6173,8 @@ uint32_t a4_aaline(uint32_t surf, const int32_t *p0, const int32_t *p1, uint32_t
 #endif
     }
 #ifdef A4_BLDEFERCHK
-    {   dfk_note_init();                             /* bench: the last line's ends and the lines counted */
-        DFK_NOTE[116] = (uint32_t)p0[0] | (uint32_t)p0[1] << 16; DFK_NOTE[117] = (uint32_t)p1[0] | (uint32_t)p1[1] << 16;
+    {   dfk_note_init();                             /* bench: the last line's end and the lines counted */
+        DFK_NOTE[117] = (uint32_t)p1[0] | (uint32_t)p1[1] << 16;
         DFK_NOTE[118]++; }
 #endif
     return ((def_line_fn)((uint32_t)(uintptr_t)&a4_aaln + (uint32_t)a4_aaln))(surf, p0, p1, c0, c1, g, n, one);
@@ -11940,7 +11969,14 @@ int a4_gl_bb(const uint32_t *r, const uint32_t *f)
     if (s->flushed) { A4_PERF[PF_BBSW]++; return 0; }          /* composited already: software, in order */
     const uint32_t *ctx = (const uint32_t *)f[0x6c / 4];
     if (ctx[0x4c / 4] != *(volatile uint32_t *)A4_GL_BB || f[0x64 / 4] != (uint32_t)VP_W
-        || x0 >= x1 || y0 >= y1) { A4_PERF[PF_BBSW]++; return 0; }  /* not into this frame's 3D */
+        || x0 >= x1 || y0 >= y1) {
+#ifdef A4_BLDEFER
+        /* round 89: into the 3D surface all the same at another row length -- its rows are not the screen's: the list
+         * whole first */
+        if (ctx[0x4c / 4] == *(volatile uint32_t *)A4_GL_BB && x0 < x1 && y0 < y1 && def_n()) def_flush(6u);
+#endif
+        A4_PERF[PF_BBSW]++; return 0;                       /* not into this frame's 3D */
+    }
     DARKPATH(8u);
     int ti = (mode == 0u || mode == 2u || mode == 3u) ? bb_tex(s, spr) : -1;
     if (ti < 0) {
@@ -12217,7 +12253,12 @@ int a4_gl_fill(const uint32_t *f)
     int32_t x = (int32_t)f[2], y = (int32_t)f[3], w = (int32_t)f[4], h = (int32_t)f[10];
     uint32_t col = f[11], border = f[12];
     if (surf[1] != *(volatile uint32_t *)A4_GL_BB || ((const uint16_t *)surf)[4] != (uint16_t)VP_W
-        || w <= 0 || h <= 0 || (border == 0x1000u && col == 0x1000u)) return 0;
+        || w <= 0 || h <= 0 || (border == 0x1000u && col == 0x1000u)) {
+#ifdef A4_BLDEFER
+        if (surf[1] == *(volatile uint32_t *)A4_GL_BB && w > 0 && h > 0 && def_n()) def_flush(7u);   /* round 89: the list first */
+#endif
+        return 0;
+    }
     if (border == 0x1000u) {
         quad_push(s, x, y, x + w, y + h, 0, 0, 0, 0, (KIND_FLAT << 28) | (col & 0xFFFFu), 0);
     } else {

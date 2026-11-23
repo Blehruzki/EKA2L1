@@ -15302,3 +15302,26 @@ c. Not entered by the bench before: a session whose GL library is loaded by the 
   backdrop's rows (round 88's GPU sky already makes it GPU-only). The deferral is a night-scene gain -- Instant Play's
   night Paris, its trees past the camera and its glows below the sky line -- and costs those tracks only the hook's
   few words a triangle. The boot's usual fault (ROM code 0x8039F834 reading 0x34, in every run since C96) only.
+- **The bands trimmed** (def_band: a copy whose rows in the band an earlier band drew is left alone -- most of them:
+  the lines come in runs over the same rows). pf97c (the pf96 profile, C96 + A4_BLDEFER): the three yardsticks agree
+  now (the convert x0.962, the composite's rows x0.960, euser x0.963) -- **the frame ~3.8% cheaper than C96 in night
+  Paris, ~1.5 ms of the bench's ~39**; the bands' own cost ~1.2% -> ~0.6% (+2E56C 0.24, def_span 0.23, a4_span_a 0.07,
+  def_band 0.10).
+- **A gap guarded**: a billboard's blit into the 3D surface at a row length other than 320, and a fill into it at
+  another width, went to software with no band (a4_gl_bb's and a4_gl_fill's "not this frame's 3D" exits): now the list
+  whole first (causes 6, 7; the check counts them at its note [116]: 0 in every run since).
+- **The check over six runs** (bk97j-n, A4_BLDEFERCHK, night Paris 200-400 s; hcmn.sh taps '4', the nitro bit, every
+  3-6 s for the flame's billboards): render differences, changed holes, holes written, span writes outside -- **0 in
+  every run (73k copies listed, ~2,500 bands, up to 476 billboard bands a run)**. One run (bk97j: 476 billboard bands,
+  294 line bands) counted **812 pixels changed under listed copies before a band, outside the rows a band had drawn**,
+  in two windows; not reproduced since (bk97k-n: 13 / 47 / 0 / 127 billboard bands), with the band notes in place to
+  catch it. Open: where those pixels came from -- the gated watch (dg97b, the band build) names no writer but the
+  billboard's row, the line and the band redraws themselves.
+- **Step 3 (texture sheets), weighed before building**: round 18's A/B on the phone priced a draw call at ~30 us
+  (reorder on and off, same scenes), but round 24's atlas -- the same idea, 75 fewer calls a frame -- gave no steady
+  gain once its uploads were done (85.1 ms against 84.8), and round 88 read the regression's per-corner cost as our
+  own per-triangle work. A sheet built whole into a fresh texture avoids round 25's ~100 ms rewrites, but nothing on
+  file says fewer calls through a big texture save time on the MBX. Not built; the measure first.
+- **euser in the whole frame** (pf96 4.69%): one loop, 4.1% -- RM-320 euser's block memcpy (0x803A27B8, ldm/stm of 64
+  bytes with PLD; its bulk path enters at 0x803A26E0), ~1.6 ms a render on the bench. Whose copies: an
+  EKA2L1_PCTRACE_REGS trace at its entry, armed at the race's step, queued.
