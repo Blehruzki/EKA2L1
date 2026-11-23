@@ -15167,3 +15167,17 @@ b. Read back: every hunk under A4_GPUCHECK (and START_AFTER only through C96.fla
 c. Not entered by the bench before: bring-up in the garage (g96: the HOME screen's car on the GPU, its 2D panels
    intact), the refusal path for a whole session (g96n: menus and race on the game's own renderer, no fault), a race
    whose first frame is the GPU's (g96, at96). Not entered at all: a real phone without a PowerVR (none here).
+
+### The GL library loaded at run time (the owner: "why is it limited like this? if it has no opengl es library at all, shouldn't just fall back to software rendering?" -- "yes")
+- Why it could not: libgles_cm was a static import (the injector's import block, 48 ordinals). The loader resolves
+  every import before the process runs, so a phone without the library -- or whose library lacks one of the ordinals
+  -- refuses the exe before any of our code could choose the game's own renderer.
+- **A4_GLDYN (new; folded into C96)**: no libgles_cm import block. a4_gl_iat (a4_gl.s) keeps the 48 ordinals as plain
+  words. At the hook's first triangle gl_dyn_link loads "libgles_cm.dll" through the game's own import slots for
+  RLibrary::Load (euser 1308, code+0x50FA8) and RLibrary::Lookup (euser 1838, code+0x50FB8) -- round 57's census used
+  them on the RM-320 bench -- and resolves each ordinal into a RAM table at 0x5C3800 (GLD: 'GLD1', state, the handle,
+  why, then the 48 functions), slot 0 last. Every GL call goes through the table (a4_gl_iat_ptr() redefined to it);
+  every GPU path already tests "no GL" as iat[0] < 0x10000, so a refused Load or a missing ordinal leaves slot 0 at 0
+  and the session is the game's own, as before bring-up. The library is loaded once and never closed. The import
+  section of the image names no libgles_cm (checked in the built image against r91e's). Bench only: A4_GLDYN_FAIL
+  (Load asked for "libgles_xx.dll").

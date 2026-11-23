@@ -138,5 +138,9 @@ is present ... Also make it so that the gpu kicks in from the first moment"). Br
 (glGetString, libgles_cm ordinal 70 -- read from the RM-320 ROM's own code -- imported at a4_gl.s [47] with the flag)
 and runs the GPU path only on a PowerVR ("MBX" / "PowerVR" in the name); otherwise the game's own renderer for the
 session. A failed bring-up is tried again after 20,000 triangles instead of at every one. The GPU from the first triangle
-the hook sees (the garage's car in the menus included) instead of the 50,000th. 48 GLES imports. Same scratch. Bench
-only: `-DA4_GPUCHECK_NOPVR` (the refusal forced).
+the hook sees (the garage's car in the menus included) instead of the 50,000th. And `-DA4_GLDYN` (the owner: "if it has
+no opengl es library at all, shouldn't just fall back to software rendering?"): no libgles_cm import -- the blob loads
+the library at its first triangle with the game's own RLibrary::Load and resolves a4_gl_iat's 48 ordinals with
+RLibrary::Lookup into a RAM table (0x5C3800); a library or ordinal missing leaves the table empty and the game's own
+renderer draws the session. Same scratch. Bench only: `-DA4_GPUCHECK_NOPVR` (the refusal forced), `-DA4_GLDYN_FAIL`
+(a library name no phone has).

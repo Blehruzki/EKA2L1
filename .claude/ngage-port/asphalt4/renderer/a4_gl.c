@@ -310,6 +310,23 @@ static uint32_t __attribute__((unused)) isqrt64(int64_t v)
 extern uint32_t a4_ntick(void);         /* a4_gl.s: User::NTickCount's fast exec */
 
 extern volatile uint32_t *a4_gl_iat_ptr(void);
+#ifdef A4_GLDYN
+/* Round 89 (the owner: "if it has no opengl es library at all, shouldn't just fall back to software rendering?"): no
+ * libgles_cm import -- the loader refuses an exe whose imported library or ordinal is missing before any of its code
+ * runs. a4_gl_iat (a4_gl.s) keeps the ordinals as plain words; at the hook's first triangle gl_dyn_link loads the
+ * library with the game's own RLibrary::Load and resolves each ordinal with RLibrary::Lookup into this RAM table, [0]
+ * written last. A library or an ordinal missing leaves [0] 0, which every GL path reads as "no GL" (the iat[0] <
+ * 0x10000 tests): the game's own renderer for the session. GLD: [0] magic, [1] state (0 not tried, 1 linked, 2
+ * failed), [2] the RLibrary handle, [3] why (Load's error, or 0x10000 | the slot whose ordinal Lookup refused), [4..]
+ * the functions, in a4_gl_iat's order. */
+#if !defined(A4_M1SKY) || !defined(A4_GPUCHECK) || defined(A4_M1LIVE) || defined(A4_IDLECEN)
+#error "A4_GLDYN: the table holds a4_gl_iat's 48 slots (A4_M1SKY's and A4_GPUCHECK's included) at 0x5C3800 (A4_M1LIVE's place); not with A4_IDLECEN (its own RLibrary use)"
+#endif
+#define GLD ((volatile uint32_t *)0x005C3800u)
+#define GLD_N 48u
+_Static_assert(0x005C3800u + 4u * (4u + GLD_N) <= 0x005C4000u, "the linked table within the scratch");
+#define a4_gl_iat_ptr() (GLD + 4)               /* every GL call through the RAM table; (a4_gl_iat_ptr)() the ordinals */
+#endif
 #ifdef A4_TEL
 extern void a4_tel_tick(uint32_t had);   /* a4_tel.c: on-device telemetry/capture */
 #endif
@@ -10099,8 +10116,44 @@ static void sky_sw_draw(const uint32_t *gctx, int took)
     }
 }
 #endif
+#ifdef A4_GLDYN
+extern const int32_t a4_rlib_load, a4_rlib_lookup;   /* a4_gl.s: (the game's import slot) - (the word) */
+typedef int (*gld_load_fn)(void *, const void *, const void *);   /* RLibrary::Load(const TDesC &, const TDesC &) */
+typedef void *(*gld_lookup_fn)(const void *, int);                /* RLibrary::Lookup(TInt) const */
+struct gld_des { uint32_t len; const void *p; };      /* a TPtrC16: EPtrC (1) << 28 | length, the text */
+/* once, at the hook's first triangle: libgles_cm loaded and a4_gl_iat's ordinals resolved into GLD, or nothing */
+static void gl_dyn_link(void)
+{
+    volatile uint32_t *G = GLD;
+    G[0] = 0x31444C47u; G[1] = 2u;                  /* 'GLD1'; failed until every slot is resolved */
+    gld_load_fn load = *(gld_load_fn const *)((uint32_t)(uintptr_t)&a4_rlib_load + (uint32_t)a4_rlib_load);
+    gld_lookup_fn lookup = *(gld_lookup_fn const *)((uint32_t)(uintptr_t)&a4_rlib_lookup + (uint32_t)a4_rlib_lookup);
+#ifdef A4_GLDYN_FAIL
+    const char *c = "libgles_xx.dll";               /* bench: a library no phone has */
+#else
+    const char *c = "libgles_cm.dll";
+#endif
+    uint16_t nm[16]; int n = 0;
+    while (c[n] && n < 16) { nm[n] = (uint16_t)(uint8_t)c[n]; n++; }
+    struct gld_des dn = { (1u << 28) | (uint32_t)n, nm }, dp = { 1u << 28, nm };   /* the name; an empty path */
+    uint32_t lib = 0;
+    const int r = load(&lib, &dn, &dp);
+    if (r) { G[3] = (uint32_t)r; return; }
+    G[2] = lib;
+    const volatile uint32_t *ord = (a4_gl_iat_ptr)();   /* the ordinals, as a4_gl.s holds them */
+    for (uint32_t i = GLD_N; i-- > 0u; ) {          /* [0] last: until then every GL path reads "no GL" */
+        void *f = lookup(&lib, (int)ord[i]);
+        if (!f) { G[3] = 0x10000u | i; for (uint32_t k = i + 1u; k < GLD_N; k++) G[4u + k] = 0; return; }
+        G[4u + i] = (uint32_t)(uintptr_t)f;
+    }
+    G[1] = 1u;
+}
+#endif
 static int draw_prim_take(uint32_t *gctx, uint32_t *desc, uint32_t flags)
 {
+#ifdef A4_GLDYN
+    if (GLD[1] == 0u || GLD[0] != 0x31444C47u) gl_dyn_link();   /* the library, once: before the first "no GL" test */
+#endif
     volatile uint32_t *iat = a4_gl_iat_ptr();
 #ifdef A4_FLAGHIST
     /* mode census: every draw_primitive by (flags, ctx[0x64] -- the per-object span

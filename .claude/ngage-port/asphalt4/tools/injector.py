@@ -424,7 +424,8 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             ph_link = syms[sym]
             word = (LINK_BASE + off) - ph_link
             struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
-    if '-DA4_IDLECEN' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+    if ('-DA4_IDLECEN' in os.environ.get('A4_EXTRA_CFLAGS', '').split()
+            or '-DA4_GLDYN' in os.environ.get('A4_EXTRA_CFLAGS', '').split()) and gl:
         for sym, off in IDLE_PLACEHOLDERS.items():
             ph_link = syms[sym]
             word = (LINK_BASE + off) - ph_link
@@ -722,8 +723,13 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         # round 89 (A4_GPUCHECK, with A4_M1SKY): glGetString appended at a4_gl.s [47] -- the renderer's name
         gpuck = '-DA4_GPUCHECK' in os.environ.get('A4_EXTRA_CFLAGS', '').split()
         assert not gpuck or m1sky, 'A4_GPUCHECK takes the IAT slot after A4_M1SKY\'s'
-        out = add_gl_import(out, syms['a4_gl_iat'] - LINK_BASE,
-                            ordinals=GL_IMPORT_ORDINALS + ([47] if m1sky else []) + ([70] if gpuck else []))
+        # round 89 (A4_GLDYN): no libgles_cm import at all -- a4_gl_iat keeps its ordinals and the blob loads the
+        # library itself (RLibrary::Load / Lookup through the game's own slots), so a phone without it still starts
+        if '-DA4_GLDYN' not in os.environ.get('A4_EXTRA_CFLAGS', '').split():
+            out = add_gl_import(out, syms['a4_gl_iat'] - LINK_BASE,
+                                ordinals=GL_IMPORT_ORDINALS + ([47] if m1sky else []) + ([70] if gpuck else []))
+        else:
+            print('GLDYN  no libgles_cm import: the blob loads it at its first triangle (a4_gl_iat\'s ordinals)')
         if 'a4_ws_iat' in syms:
             out = add_gl_import(out, syms['a4_ws_iat'] - LINK_BASE, WS_IMPORT_DLL, WS_IMPORT_ORDINALS)
         if 'a4_cone_iat' in syms:

@@ -189,8 +189,8 @@ a4_bbret:
 a4_tfzvt:
         .word   0xDEADBEEF          @ patched: (code+0xB08CC) - (this word): TFakeZFace's vtable (its key is 1)
 
-#ifdef A4_IDLECEN
-@ Round 57 (a4_gl.c A4_IDLECEN): the game's own import slots for RLibrary::Load (euser 1308, code+0x50FA8) and
+#if defined(A4_IDLECEN) || defined(A4_GLDYN)
+@ Round 57 (a4_gl.c A4_IDLECEN; round 89, A4_GLDYN: libgles_cm loaded at run time): the game's own import slots for RLibrary::Load (euser 1308, code+0x50FA8) and
 @ RLibrary::Lookup (euser 1838, code+0x50FB8), patched by the injector to (the slot) - (this word): the census
 @ looks up the thread calls by ordinal at run time instead of adding an euser import block.
         .global a4_rlib_load, a4_rlib_lookup
