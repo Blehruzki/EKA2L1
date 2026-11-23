@@ -144,3 +144,23 @@ the library at its first triangle with the game's own RLibrary::Load and resolve
 RLibrary::Lookup into a RAM table (0x5C3800); a library or ordinal missing leaves the table empty and the game's own
 renderer draws the session. Same scratch. Bench only: `-DA4_GPUCHECK_NOPVR` (the refusal forced), `-DA4_GLDYN_FAIL`
 (a library name no phone has), `-DA4_GLDYN_MISSORD=<slot>` (that slot asks ordinal 999: a library without the function).
+
+C97.flags = C96.flags with `-DA4_BLDEFER` (round 89, toward 30 fps: the owner, "So what's left to get 30 fps?" ...
+"go with that plan"). The see-through copies the game draws in software below the GPU's sky -- a tree passing the
+camera, ~170 rows, up to the whole screen; the profile's biggest game routine, the alpha span +33EA8 at 4.3% of the
+bench frame -- are listed instead of drawn at their turn, with a copy of what the game's path reads, and after the
+composite the game draws them again from that copy only on the rows where a pixel stayed undrawn (the span calls
++2E826/+2E870/+2E8B8/+2E8EA and +2F612/+2F65C/+2F6A4/+2F6D6 filtered, each such row kept and put back where the GPU
+drew). A billboard's blit or an anti-aliased line (CFakeZAALine3DGradient's +2BC9A, its calls +333A8/+333E2
+hooked) over a listed copy has the list drawn first on its rows (a band); a triangle left to software, the two-scale
+blit, a full list or no composite draw it whole. **Scratch `A4_SCRATCH_SIZE=0x1C8000`** (the list and its bands at
+0x5C4000-0x5C8C28); its other state at 0x460000-0x463C80. Telemetry: CRK1 [40] copies listed, [41] drawn again after
+the composite, [42] rows drawn again (high half: rows drawn in bands), [43] drawn whole early, [44] lists dropped (high
+half: copies drawn in bands) (frec3.py mode `defer`). Bench only: `-DA4_BLDEFERCHK` (built without `-DA4_BBPROBE`,
+`A4_SCRATCH_SIZE=0x23E000`; frec3.py mode `deferchk`, scratchpad py/dfk.py for its notes at 0x412D00): each copy drawn
+into a cleared screen of its own at its turn and again from the list's copy, compared (CRK1 [45]); hole pixels under
+a copy changed after its turn ([46]); pixels under a copy changed after its turn before an early draw or band ([47]);
+the holes against what the composite and fill wrote, and the span's writes outside the columns kept (notes [119],
+[121]) -- all must stay 0. `-DA4_DEFERGATE` (EKA2L1_WATCHGATE's word, 0x5C30F0, open while copies are listed: with
+EKA2L1_WATCH over the surface, what else writes then). `-DA4_AALINEALL` (every line draws the list first).
+`-DA4_COPYCEN` and `-DA4_DEFERCEN` (the censuses that led to it, CRK1 [40..47]).

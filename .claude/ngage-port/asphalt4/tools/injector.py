@@ -80,6 +80,13 @@ MESH_PLACEHOLDERS = {'a4_otins': 0x349B0 | 1,     # the ordering-table insert (T
                      'a4_tfvt': 0xB08EC,          # TFace's vtable (RTTI, MBX.md map 1)
                      'a4_bbret': 0x31364 | 1,     # TBillboard's draw: the blit call's return (Thumb lr)
                      'a4_tfzvt': 0xB08CC}         # TFakeZFace's vtable (key +522C2 returns 1: drawn last)
+# Round 89 (A4_BLDEFER): draw_primitive and the two blended spans for a4_gl.c, and the spans' eight call sites
+BLDEFER_PLACEHOLDERS = {'a4_dprim': 0x300AE | 1, 'a4_spana': 0x33EA8 | 1, 'a4_spand': 0x33D18 | 1, 'a4_aaln': 0x2BC9A | 1}
+BLDEFER_HOOKS = {0x2E826: ('a4_span_a', (0xF005, 0xFB3F)), 0x2E870: ('a4_span_a', (0xF005, 0xFB1A)),
+                 0x2E8B8: ('a4_span_a', (0xF005, 0xFAF6)), 0x2E8EA: ('a4_span_a', (0xF005, 0xFADD)),
+                 0x2F612: ('a4_span_d', (0xF004, 0xFB81)), 0x2F65C: ('a4_span_d', (0xF004, 0xFB5C)),
+                 0x2F6A4: ('a4_span_d', (0xF004, 0xFB38)), 0x2F6D6: ('a4_span_d', (0xF004, 0xFB1F)),
+                 0x333A8: ('a4_aaline', (0xF7F8, 0xFC77)), 0x333E2: ('a4_aaline', (0xF7F8, 0xFC5A))}   # +3334C's line
 CAPTURE_SKIP_RET = 0x300E0      # draw_primitive epilogue; GPU-drawn prims return here
 BB_SKIP_RET = 0x3031C           # the billboard blit's epilogue; GPU-queued sprites return here
 FILL_SKIP_RET = 0x2AB4C         # the rectangle fill's epilogue; GPU-queued fills return here
@@ -130,6 +137,10 @@ assert not ('-DA4_FRC3' in _xf or '-DA4_TELMARK' in _xf) or GL_SCRATCH + GL_SCRA
     'A4_FRC3 / A4_TELMARK: the mark state, FRC3, the sprite list and the list tiles at 0x5B0000-0x5B9C68 -- A4_SCRATCH_SIZE must be 0x1B9000 or more'
 assert '-DA4_LINEREC' not in _xf or ('-DA4_FRC3' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5C1000), \
     'A4_LINEREC: written with FRC3\'s blocks, its ring at 0x5BA000, the stream\'s row edges at 0x5BB000-0x5C0280 -- A4_SCRATCH_SIZE must be 0x1C0000 or more'
+assert '-DA4_BLDEFER' not in _xf or GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5C9000, \
+    'A4_BLDEFER: its list at 0x5C4000-0x5C8800 -- A4_SCRATCH_SIZE must be 0x1C8000 or more'
+assert '-DA4_BLDEFERCHK' not in _xf or ('-DA4_BLDEFER' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x63F000), \
+    'A4_BLDEFERCHK: its three screens, masks and hashes at 0x5C9000-0x63F000 -- A4_SCRATCH_SIZE must be 0x23E000 or more'
 assert '-DA4_BLURCHECK' not in _xf or ('-DA4_NITROBLUR' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x5E9800), \
     'A4_BLURCHECK: its copy of the screen at 0x5C4000-0x5E9800 -- A4_SCRATCH_SIZE must be 0x1E9000 or more'
 assert '-DA4_SNOWCHECK' not in _xf or ('-DA4_SNOWFAST' in _xf and GL_SCRATCH + GL_SCRATCH_SIZE >= 0x61EB00), \
@@ -431,6 +442,11 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
             word = (LINK_BASE + off) - ph_link
             struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
         print('IDLE   a4_rlib_load -> +050FA8, a4_rlib_lookup -> +050FB8 (the game\'s RLibrary slots: the census)')
+    if '-DA4_BLDEFER' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl:
+        for sym, off in BLDEFER_PLACEHOLDERS.items():
+            ph_link = syms[sym]
+            word = (LINK_BASE + off) - ph_link
+            struct.pack_into('<I', blob, ph_link - blob_base, word & 0xFFFFFFFF)
     steptime = '-DA4_STEPTIME' in os.environ.get('A4_EXTRA_CFLAGS', '').split() and gl
     if gl:      # patched in every GL build, so no 0xDEADBEEF is left whether or not they are hooked
         for sym, off in STEP_PLACEHOLDERS.items():
@@ -514,6 +530,14 @@ def main(src_exe, out_exe, measure_only=False, gl=False, clean=False, capture=Fa
         assert have == (0xF7FD, 0xFD9B), 'blur hook +012A12: displaced %04x %04x, expected f7fd fd9b (bl +1054C)' % have
         blx_insert(code, 0x12A12, syms['a4_nitro_blur'])
         print('blur   +012A12 -> a4_nitro_blur +%06X (4-byte BLX for the bl +1054C)' % (syms['a4_nitro_blur'] - LINK_BASE))
+    # round 89 (A4_BLDEFER): the alpha and additive rasterizers' span calls through a4_span_a / a4_span_d (a4_gl.c),
+    # which pass straight through except while a deferred copy is drawn again after the composite
+    if gl and '-DA4_BLDEFER' in _xf2:
+        for off, (sym, want) in BLDEFER_HOOKS.items():
+            have = struct.unpack_from('<HH', code, off)
+            assert have == want, 'span hook +%06X: displaced %04x %04x, expected %04x %04x' % ((off,) + have + want)
+            blx_insert(code, off, syms[sym])
+            print('defer  +%06X -> %s +%06X (4-byte BLX for the bl)' % (off, sym, syms[sym] - LINK_BASE))
     if gl and '-DA4_BLURFORCE' in _xf2:                 # with or without the hook: the game's blur's cost, or ours
         for off, want in ((0x129D6, 0xD01E), (0x129E2, 0xD018), (0x129E8, 0xD115)):
             have = struct.unpack_from('<H', code, off)[0]

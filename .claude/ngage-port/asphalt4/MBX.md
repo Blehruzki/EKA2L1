@@ -15218,3 +15218,81 @@ c. Not entered by the bench before: a session whose GL library is loaded by the 
 ### Phone round r91f (the owner: "Yup, all good")
 - The owner ran r91f on the N95 8GB: all good -- the GPU from the first 3D frame, the reflection reversing, nothing
   reported broken. No telemetry uploaded with it (the frame times of this round are not on file).
+
+## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
+- **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
+  composite turns the GPU's BGRA strip (READBUF, 20 KB: in the cache) into the game's 565 rows (a4_comp_row, ~5
+  instructions a pixel); the 2D phase draws the HUD and sprites into those rows; the present turns all 565 rows into
+  the display's 32-bit words (a4_cvt565_run, ~4 a pixel, 153 KB read, 307 KB written). Fusing them would mean writing
+  the display's word at the composite (exact: the 565-quantised colour is BGRA & 0x00F8FCF8) and converting at the
+  present only what the 2D phase changed -- but the 2D phase is the game's own blitters, not ours, so finding what it
+  changed means reading every 565 row again at the present: the same 153 KB read, the same 307 KB written (earlier),
+  ~1 instruction a pixel saved: **~0.2 ms, not the ~2-3 ms the ceilings estimate gave** (cl_cvcp removed both passes
+  outright, which no exact design can). RE 5 (round 88) had already read "no cheap cut" here; the estimate was mine and
+  wrong. Not built.
+- **pf96, the whole frame by cycles** (C96 + A4_PROFSEG 0..4095, Instant Play = night Paris, 240 s; 1.5e9 gated
+  instructions skipped, 3e9 credited; EKA2L1_PCPROF_CYCLES on the N95 model): the game's own code 23.0% (+33F00 4.5,
+  +52300 1.3, +49500 1.3, +52F00 1.0, +35900 0.8, +26E00 0.8), our GL submission and takes 17.1% (batch_draw 3.6,
+  lean_tail_cv 2.1, tex_index 1.3, ...), the composite 16.8% (a4_comp_row 11.1, a4_gl_flush 5.7), the present's
+  convert 16.0%, the lifted logic and scene 8.1% (engi_349F8 2.6, ...), the shadow 6.8%, system DLLs 5.9% (euser 4.7),
+  the lifted HUD painters 5.4%, memclr 1.0%. **The game's biggest block is one loop: +33F10, the alpha span's pixel
+  loop (+33EA8), 4.26% of the frame.**
+- Who draws there. cc96 (C96 + A4_COPYCEN, lean_tail_cv's blended classes against the GPU sky's rows; 200 s, marks
+  60-180): alpha triangles 55,803, software copies kept (reaching below the backdrop's rows) 178; additive 17,416, all
+  kept; rows composited below the sky 115,737, 6,279 (5.4%) with an undrawn pixel. tr96 / tr96b (r91f,
+  EKA2L1_PCTRACE_REGS at +33EA8, then +2E56C too; 150 s): 79k span calls, every one from +2E56C, which only
+  draw_primitive (+3014C) calls -- **1,043 triangles, ~65 rows each**, pieces of the screen's whole height mid-race
+  (trees passing the camera). cc96b (the census at the take): every alpha triangle reaches lean_tail_cv (none after
+  the composite, none on a second target); 616 copies kept in 1,021 scenes. **Round 88 dropped the deferral of these
+  copies (bc88d: 0.27 a composite) by their number; by their size they are the frame's biggest triangles.**
+- dc96 (C96 + A4_DEFERCEN, bench: each kept copy listed with its rows and columns, each software billboard before the
+  composite tested against the list, the composite's rows with an undrawn pixel marked; to scene 992): 315 composites
+  with a copy; 677 alpha copies, 115,753 rows (~171 each), **2,879 (2.5%) of those rows with an undrawn pixel**; 8,006
+  additive copies; 1,008 software billboards before the composite below the sky, **0 over a listed copy**.
+- **A4_BLDEFER** (a4_gl.c; injector.py BLDEFER_HOOKS / _PLACEHOLDERS; a4_gl.s a4_dprim / a4_spana / a4_spand /
+  a4_aaln): a copy kept below the GPU's sky in a GPU-sky frame whose composite is the ARMv6 one is listed instead of
+  drawn (the hook returns 1), with a copy of what the game's path reads (the primitive's 13 words, its corners' 6, the
+  corner words pointed at the copy). The composite keeps each row's undrawn pixels; after it, the crack fill's pixels
+  are taken out of them (def_holes: round 81's rule recomputed from the drawn masks, only on rows with an undrawn
+  pixel), and a copy with such a hole in its rectangle is drawn again by draw_primitive from the list's copy, the hook
+  stepping aside (the list's mode word), while the eight span calls of the two rasterizers (+2E56C -> +33EA8, +2F358 ->
+  +33D18) pass through a4_span_a / a4_span_d: a row without a hole is skipped, a row with one is kept by words over the
+  copy's columns (4 pixels wider) and put back wherever the GPU drew or the fill wrote. The order: a software write into
+  the frame before the composite -- a billboard's blit (a4_gl_bb) or an anti-aliased line (below) over a listed copy --
+  has every listed copy drawn on the write's rows first, in order (a band; logged so that those rows are not drawn
+  again); a triangle the hook leaves to software, the two-scale blit, a list of 128 full, or no composite draw the list
+  whole. The spans read only the 3D context's frame-wide words and the per-triangle ones +2E56C writes (ctx +0x7C,
+  +0x80, +0x88) and store only the row's pixels (their helper +50FEE computes); both rasterizers drop the span's return.
+- **The other writer: CFakeZAALine3DGradient.** dg97 (A4_DEFERGATE: EKA2L1_WATCHGATE's word open while copies are
+  listed, EKA2L1_WATCH over the surface 0xE0E9C0, WATCHONCE; night Paris 200 s): the writers then are the billboards'
+  row (bb_row2) and +2BE72 / +2C088 / +2C0A6, all in +2BC9A -- an anti-aliased gradient line between two pixel ends,
+  called only from +3334C, the draw method (vtable at code+0xB03F0, after the key +5223C) of the table entry class
+  CFakeZAALine3DGradient: drawn among the table's triangles, never through draw_primitive. a4_aaline wraps its two
+  calls (+333A8, +333E2): a line into the 3D surface (its pixels at +0xC; +4 is its row length -- the first test read
+  +4 and never matched) over a listed copy has the list drawn on its rows (the ends' box, 2 pixels wider) first.
+- The way there (bk97, the check build, A4_BLDEFERCHK: Instant Play 200 s, marks 60-180): (1) the box from the
+  corners' low halves wrapped a corner above the screen to row 65,531 (a read past the scratch; the game reads whole
+  words) -- the box from whole words, clamped. (2) The primitives' own words: 52 of 6,170 changed between a copy's
+  turn and the composite (the game reuses a primitive for consecutive glows), and the "same primitive, next piece of
+  a cut triangle" test merged such glows -- hence the list's own copy, and a cut triangle's pieces told by the hook's
+  call. (3) The list of 32 overflowed 270 times with the additive glows (~11 a composite) -- 128, past the old scratch.
+  (4) The check's first form compared the screen from the list's start, not from each copy's turn (a false alarm) --
+  each copy's rectangle hashed at its turn. (5) Pixels under listed copies changed before their early draws with no
+  software billboard after their turns (9,271; 5,212 in runs with more trees) -- the line above. (6) Billboards over a
+  big listed tree drew it whole early (174 times, 1,848 copies in one run) -- the bands. The profile pf97 (first form)
+  put the deferral's own cost at the composite (+0.65% of the frame: the hole mask's fill correction inside the fill's
+  per-word loop, then a walk of every composited row) and the row kept pixel by pixel (+0.2%) -- both rewritten.
+- **The check, final form** (bk97h / bk97i: A4_BLDEFERCHK with the line hooked and bands; night Paris 200 s): bk97h
+  6,111 copies listed, 143 drawn again after the composite (2,168 rows), 2,354 drawn in 943 bands (118 billboards, 825
+  lines; 1,960 rows), none drawn whole early -- **0 render differences, 0 hole pixels changed under a copy, 0 holes the
+  composite or the fill wrote, 0 span writes outside the columns kept**; its "changed before a band" count was the
+  check's own (a band's rows are final for every listed copy; the line then writes them) -- counted outside the band
+  rows since, bk97i: 0 (a route with fewer trees: 873 listed). 4-31 undrawn pixels a run taken as filled and left as
+  they were: fills of an equal colour.
+- **pf97b (C96 + A4_BLDEFER with bands, the pf96 profile otherwise)**: +33EA8 4.78% -> 0.17%, +33D18 0.52 -> 0.01;
+  the composite (a4_gl_flush) 5.68 -> 5.67 (the hole fix-up's cost gone); the bands' own: the rasterizer's set-up run
+  again (+2E56C 0.09 -> 0.59%) and the span filter on rows it skips (def_span 0.45, a4_span_a 0.16), def_band 0.09.
+  Against the present's convert (one a render): **the frame ~3.6% cheaper, ~1.4 ms of the bench's ~39** -- on a route
+  with ten times pf96's software billboard rows (bb_row2 0.09 -> 1.04%); the shares of content-bound routines differ
+  run to run by ~1% (pf97's two runs: 2.7% and 1.0% with the first form). The lines' bands are tall (a light streak is
+  a long diagonal), and a band runs the copy's whole set-up and row loop for its rows -- the next cost to cut.

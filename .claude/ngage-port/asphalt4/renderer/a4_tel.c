@@ -392,14 +392,14 @@ void a4_tel_tick(uint32_t had)
     {   struct des md = { DES(33u * 4u), (const void *)0x00412E00u };
         efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES, &md); }
 #endif
-#if defined(A4_FLAGHIST) || defined(A4_SWHIST) || defined(A4_BBPROBE) || defined(A4_REMADEPROBE)
+#if defined(A4_FLAGHIST) || defined(A4_SWHIST) || defined(A4_BBPROBE) || defined(A4_REMADEPROBE) || defined(A4_BLDEFERCHK)
     {   /* the (flags, mode) census, a4_gl.c 0x412D00, 122 words, after the framebuffer */
         struct des cd = { DES(122u * 4u), (const void *)0x00412D00u };
         efs_writep(f, (int)sizeof h + (int)FPS_BYTES + (int)FB_BYTES, &cd);
     }
 #endif
 #ifdef A4_AGG
-#if !(defined(A4_FLAGHIST) || defined(A4_SWHIST) || defined(A4_BBPROBE) || defined(A4_REMADEPROBE))
+#if !(defined(A4_FLAGHIST) || defined(A4_SWHIST) || defined(A4_BBPROBE) || defined(A4_REMADEPROBE) || defined(A4_BLDEFERCHK))
 #error "A4_AGG is written after the census tail: build it with A4_BBPROBE"
 #endif
     {   /* round 19: this window into its mode's sums (a window of loads and pauses, 0.5 s a

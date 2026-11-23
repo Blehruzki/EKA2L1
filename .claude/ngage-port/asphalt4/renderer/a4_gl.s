@@ -189,6 +189,21 @@ a4_bbret:
 a4_tfzvt:
         .word   0xDEADBEEF          @ patched: (code+0xB08CC) - (this word): TFakeZFace's vtable (its key is 1)
 
+#ifdef A4_BLDEFER
+@ Round 89 (a4_gl.c A4_BLDEFER): draw_primitive, to draw a listed copy again, and the two spans the filtered call
+@ sites (a4_span_a / a4_span_d) pass through to -- each word patched to (target | 1) - (this word).
+        .global a4_dprim, a4_spana, a4_spand, a4_aaln
+        .align  2
+a4_aaln:
+        .word   0xDEADBEEF          @ patched: (code+0x2BC9A | 1) - (this word): the anti-aliased line
+a4_dprim:
+        .word   0xDEADBEEF          @ patched: (code+0x300AE | 1) - (this word): draw_primitive
+a4_spana:
+        .word   0xDEADBEEF          @ patched: (code+0x33EA8 | 1) - (this word): the alpha class's span
+a4_spand:
+        .word   0xDEADBEEF          @ patched: (code+0x33D18 | 1) - (this word): the additive class's span
+#endif
+
 #if defined(A4_IDLECEN) || defined(A4_GLDYN)
 @ Round 57 (a4_gl.c A4_IDLECEN; round 89, A4_GLDYN: libgles_cm loaded at run time): the game's own import slots for RLibrary::Load (euser 1308, code+0x50FA8) and
 @ RLibrary::Lookup (euser 1838, code+0x50FB8), patched by the injector to (the slot) - (this word): the census
