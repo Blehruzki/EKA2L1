@@ -7986,7 +7986,12 @@ void a4_car_anim(uint32_t car)
     volatile struct gcanim *A = GCANIM;
     if (A->magic != GCANIM_MAGIC) { A->mi = 0; A->refreshed = A->refused = A->rebakes = 0; A->magic = GCANIM_MAGIC; }
 #ifdef A4_SPINCEN
-    {   volatile uint32_t *C = crk_get();
+    {
+#ifdef A4_WHEELDESC
+        volatile uint32_t *C = (volatile uint32_t *)A4_GL_CUT + 60u - 40u;
+#else
+        volatile uint32_t *C = crk_get();
+#endif
         if (GO32(car + 0x1A8u)) {
             const uint32_t fr = ((volatile struct glr *)A4_GL_SCRATCH)->frames;
             if (C[45] != fr) { C[45] = fr; C[44] &= 0xFFFF0000u; }
@@ -8002,7 +8007,7 @@ void a4_car_anim(uint32_t car)
          * frames 1 and 2 ([8..27], [28..47]): the descriptor's address, its first 16 words, a hash of all its texels,
          * the render it was read; [48] the first tyre face (car+26C), [49..57] its first nine words */
         volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
-        if (U[0] != 0x31534457u) { for (uint32_t k = 1; k < 64u; k++) U[k] = 0; U[0] = 0x31534457u; }
+        if (U[0] != 0x31534457u) { for (uint32_t k = 1; k < 72u; k++) U[k] = 0; U[0] = 0x31534457u; }
         if (GO32(car + 0x1A8u)) {
             U[1]++; U[2] = car; U[3] = GO32(car + 0x66Cu);
             for (uint32_t k = 0; k < 4u; k++) U[4u + k] = GO32(car + 0x180u + 4u * k);
@@ -9158,7 +9163,11 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
                                       * them with another tyre frame than the last such render's, [42] the frame (the
                                       * group's live descriptor), [43] the last render counted, [44] calls of +1B084 with
                                       * +1A8 set in that render (A4_CARANIM's) | the most in one render << 16 */
+#ifdef A4_WHEELDESC
+                volatile uint32_t *C = (volatile uint32_t *)A4_GL_CUT + 60u - 40u;   /* in 'WDS1' at [60..65] */
+#else
                 volatile uint32_t *C = crk_get();
+#endif
                 const uint32_t d = GC_GD(me, k), fr = s->frames;
                 if (C[43] != fr) { C[43] = fr; C[40]++; if (d != C[42]) C[41]++; C[42] = d; }
             }

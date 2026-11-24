@@ -15229,7 +15229,8 @@ c. Not entered by the bench before: a session whose GL library is loaded by the 
     tail light** (the red lamp's shape replaced in part by a flat light block), not seen when not braking.
   - The wheels' spin (350Z, 599 GTB) is the owner's observation; the videos are too blurred to show it.
 - The owner then: "there are 28 vehicles in total, all unlocked: 24 cars and 4 bikes. Make sure the fixes work across
-  all vehicles". The bench's save (the owner's earlier upload) unlocks 7: Veyron, Mini, 350Z, SLK55, M3, Corvette, Ducati.
+  all vehicles". (Read then as "the bench's save unlocks 7" -- wrong, corrected below: round 88's census cen7 had run
+  only the first seven of the garage's list, and that was taken for the save's limit.)
 
 ### Round 89: the three bugs on r91f, read on the bench (C96, LA, '5' 40-50 s then '6' tapped: the brake, then reverse)
 New bench switches (a4_gl.c): A4_WHEELDESC (CUT1's place 'WDS1': the player's two tyre descriptors car+180[1], [2],
@@ -15255,7 +15256,7 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   bake, 642 corners moved** (vertex 78: 0,42,21 -> 0,41,20), in the braking stretch -- the game moves that mesh's
   vertices (no other path of ours follows them: +1B084's 24 tyre vertices are A4_CARANIM's) and the GPU drew it in the
   pose of its bake. The owner's Z1000 (the tank over the rider's back, in some frames) fits a rider drawn in a stale
-  pose; the Z1000 is not on the bench's save, so not shown. **Fix, A4_CARDEFORM**: each car mesh's vertex positions
+  pose; the Z1000 was not run here (see the correction below). **Fix, A4_CARDEFORM**: each car mesh's vertex positions
   hashed at its bake and at every take (order-free: index and x y z mixed a vertex, XORed; the 24 tyre vertices left
   out of both), kept in the 24 free words between GCBND and GCMESH (0x4665A0); a different hash hands that mesh to the
   game for the render, as a failed gca_refresh does. df (A4_CARDEFORMCEN, CRK1 [40..45]): **Ducati 217 of 4,808 takes
@@ -15267,11 +15268,19 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   (A4_SPINCEN): the drawn tyre frame changes in 127 of 300 renders (350Z) and 102 of 285 (Mini; the rest at a stop or
   before the start), +1B084 once a render for both. at (A4_ANIMTINT, both draws): the tyre faces show in no chase or
   reverse shot of either car -- only from the side. **Not reproduced: on the bench the GPU spins the 350Z's tyres
-  exactly as the game sets them, as it does the Mini's.** The 599 GTB is not on the save.
+  exactly as the game sets them, as it does the Mini's.** The 599 GTB was not run here.
 - **C99 = C96 + -DA4_CARDEFORM -DA4_BBREDRAWFIRST** (scratch 0x1C3000, as r91f): sha256 5db4e27f9fb6cca2..., 1,026,684
   bytes (C96 1,025,816). C90-C98 rebuild to their bytes (C96: 47a0f91a..., r91f's). Cost: the hash ~15 instructions a
   vertex over ~2,000-2,500 vertices a render (the player's ~940, the opponents' ~200 each); the earlier redraw an extra
-  batch draw when a sprite meets pending items (braking, nitro). Not covered: the 21 vehicles the bench's save lacks.
+  batch draw when a sprite meets pending items (braking, nitro). Not covered at first: the other 21 vehicles.
+- **The owner's save, uploaded again** (9d99394a-Asphalt4, 8,100 bytes): byte for byte the bench's own (sha256
+  c957543240425775..., the round-60 upload). **All 28 vehicles are in the bench's garage** (CAREER -> CHOOSE YOUR RIDE,
+  Right from the Veyron, ex28): 0 Bugatti Veyron, 1 Mini Cooper S, 2 Nissan 350Z, 3 Mercedes SLK55 AMG, 4 BMW M3,
+  5 Chevrolet Corvette, 6 Ducati Monster 696, 7 Skyline GTR, 8 BMW Z4M, 9 Aston Martin Vantage, 10 Lotus Exige S,
+  11 RUF RGT, 12 Z1000, 13 Nissan GT-R, 14 BMW M6, 15 Mercedes SL63, 16 Aston Martin DB9, 17 Ferrari F430 Spider,
+  18 Corvette ZR1, 19 Ford Mustang FR500, 20 ZX-10 R, 21 Ferrari 599 GTB, 22 Aston Martin DBS, 23 Ford GT, 24 Ferrari
+  F430 Scuderia, 25 Mercedes CLK, 26 Ferrari Enzo, 27 Ducati 1098 (then the Veyron again). Bikes: 6, 12, 20, 27.
+  CARMENU's Right count is the index. Round 88's "the seven cars the owner's save unlocks" (cen7) was the same mistake.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
