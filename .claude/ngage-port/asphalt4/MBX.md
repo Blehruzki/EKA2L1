@@ -15281,6 +15281,24 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   18 Corvette ZR1, 19 Ford Mustang FR500, 20 ZX-10 R, 21 Ferrari 599 GTB, 22 Aston Martin DBS, 23 Ford GT, 24 Ferrari
   F430 Scuderia, 25 Mercedes CLK, 26 Ferrari Enzo, 27 Ducati 1098 (then the Veyron again). Bikes: 6, 12, 20, 27.
   CARMENU's Right count is the index. Round 88's "the seven cars the owner's save unlocks" (cen7) was the same mistake.
+- **All 28 on C99** (all28.sh: cen28.exe = C99 + A4_CARDEFORMCEN + A4_WHEELDESC + A4_SPINCEN, built as C99 at 0x1C3000;
+  LA, '5' 40 s, then '6' tapped 20 s, a shot every tap; py/all28sum.py): **every car 0 moved meshes** (1,225-3,515 takes
+  each); **every bike its 170-vertex rider mesh moved**, handed to the game's draw -- Ducati Monster 696 151 of 4,964,
+  Z1000 35 of 1,949, ZX-10 R 99 of 2,903, Ducati 1098 174 of 4,142; every vehicle's two tyre frames distinct images,
+  +1B084 once a render; the boot fault only in each. The braking shots (brakesheet.sh): glows on the lamps, no shadow
+  on any car, riders' backs whole. (A4_SPINCEN's "new frame" share, 0.6-55%, counts garage and countdown renders and the
+  capture's timing -- the M3's newest capture fell early in its race -- so it says nothing about the spin by itself.)
+- **The Z1000 against stock and r91f** (z1k.sh, the same drive): z1k_c96 (C96, r91f's bytes) braking -- **the green tank
+  across the rider's lower back** in frames 3-6, the owner's video; z1k_st (stock) -- the back black to the seat; v28_12
+  (C99) -- as stock.
+- **The wheels against stock** (w66b.sh: EKA2L1_WATCH over the heap with EKA2L1_WATCHPC on +1B084's three frame-word
+  stores +1B2A0 / +1B2A8 / +1B2AE, the 350Z, the same drive): **stock 123 flips (62 to 2, 61 to 3 then 1) and 82 zeros
+  at a standstill; C99 156 flips and 166 zeros** -- in both the frame word steps once a render while the car moves, and
+  C99 draws each render's frame (wc350, WDS1). (w66 watched one address: the car object sits at 0x02022C30 in stock,
+  0x02122C30 with the blob.) The one difference is the rate: the tyre's two frames flip once a render, and r91f renders
+  ~18-20 a second on the phone against stock's ~10-11, so each frame shows ~55 ms instead of ~90. Whether that is what
+  the owner sees (two frames alternating faster blur into a still wheel on a rim like the 350Z's) is a question for the
+  owner, not settled here; a flip held for two renders when the render is short would restore stock's rate, visual only.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
