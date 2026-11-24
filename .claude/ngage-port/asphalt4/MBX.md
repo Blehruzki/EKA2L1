@@ -15299,6 +15299,10 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   ~18-20 a second on the phone against stock's ~10-11, so each frame shows ~55 ms instead of ~90. Whether that is what
   the owner sees (two frames alternating faster blur into a still wheel on a rim like the 350Z's) is a question for the
   owner, not settled here; a flip held for two renders when the render is short would restore stock's rate, visual only.
+- **The owner, on the wheels** (after the 28-vehicle report): "So, the front wheels are spinning. But the back wheels
+  dont. I noticed it by continuously steering to the left or right so they can be captured by the camera. Of course I
+  prepared the car to perform this from the opposite side of where it's steering to. I didn't check the rest of the
+  vehicles but that's what you will do and fix it accordingly." (r91f; the 350Z and the 599 GTB.)
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
