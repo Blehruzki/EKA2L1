@@ -6340,7 +6340,8 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
 #ifdef A4_STREAMCEN
             if (0)     /* bench (round 83): the census owns CUT1's place */
 #endif
-#if defined(A4_CARPROBE2) || defined(A4_FLUSHPROBE) || defined(A4_WHEELCEN) || defined(A4_WHEELDESC) || defined(A4_CARMESHLOG)
+#if defined(A4_CARPROBE2) || defined(A4_FLUSHPROBE) || defined(A4_WHEELCEN) || defined(A4_WHEELDESC) || defined(A4_CARMESHLOG) \
+    || defined(A4_TYREMAP) || defined(A4_TWINCEN)
             if (0)     /* bench (round 84): the car probe owns CUT1's place */
 #endif
             {   /* 'CUT1': this cut's raw corners, the last CUT_N kept -- a mark at a gap shows what was cut in its frame */
@@ -7304,6 +7305,23 @@ struct gcanim { uint32_t magic, car, frame, mi, verts, ofs, info, refreshed, ref
 _Static_assert(GCAR_BASE + 0x600u + GCAR_NM * sizeof(struct gcmesh) + sizeof(struct gcanim) <= 0x00467000u, "the cars' animation");
 #define GC_GD(me, k) (((me)->gm1[k] & 2u) ? GO32((me)->gd[k] + 0x30u) : (me)->gd[k])   /* a live group: its face's */
 #define GC_M1(me, k) ((uint32_t)(me)->gm1[k] & 1u)
+#ifdef A4_TYRETINT
+#ifndef A4_ANIMTINT
+#error "A4_TYRETINT is a colour of A4_ANIMTINT's"
+#endif
+/* bench (round 89, the owner: "the front wheels are spinning. But the back wheels dont"): a static group on one of the
+ * tyre frames' descriptors (the shared slots +1B084 hands the list's faces, car+180[0..2]) -- drawn green */
+static int tyre_static(const struct gcmesh *me, uint32_t k)
+{
+    volatile struct gcanim *A = GCANIM;
+    if (A->magic != GCANIM_MAGIC || !A->car || (me->gm1[k] & 2u)) return 0;
+    for (uint32_t j = 0; j < 3u; j++) if (me->gd[k] == GO32(A->car + 0x180u + 4u * j)) return 1;
+    return 0;
+}
+#define TYRE_GREEN(me, k) else if (tyre_static(me, k)) { gl_disable(GL_TEXTURE_2D); gl_color4x(0, FX, 0, FX); }
+#else
+#define TYRE_GREEN(me, k)
+#endif
 #else
 #define GC_GD(me, k) ((me)->gd[k])
 #define GC_M1(me, k) ((me)->gm1[k])
@@ -8061,6 +8079,186 @@ static uint32_t gca_vert(uint32_t car, uint32_t verts, uint32_t vp)   /* 1 + the
     }
     return 0;
 }
+#ifdef A4_TYRETWIN
+/* Round 89 (the owner: "the front wheels are spinning. But the back wheels dont"): a car's tyre faces come twice -- each
+ * of the 40 +1B084 animates has a static twin later in the face array (350Z faces 192-322 and 1520-1650, 599 GTB 89-118
+ * and 1295-1324), the same three corners and winding, on the tyre's frame-0 image. Both have the same deepest ZW, so the
+ * same table bucket, and the table draws a bucket newest first: the lower index, the animated face, is drawn last and
+ * is what the game shows. On the GPU the two are coplanar and the twin's group, drawn later (GEQUAL), covered it: the
+ * rear tyres (never moved) showed frame 0 always. So the bake leaves out a face that is not animated and lies on an
+ * animated face of lower index -- one the game never shows (it draws over it exactly: the cars' textures are opaque,
+ * gca_texok). An animated face's corners are compared where they rest: for one of +1B084's 24 vertices its base (x
+ * car+20C[j], y car+23C[j]; z it never writes), so a steered or bouncing wheel finds its twin as well; a face with a
+ * corner among the 24 is never left out. The table: 1,736 bytes at the top of the objects' arena, under the bake's
+ * own records (gcar_mesh reserves it). */
+#ifndef A4_CARANIM
+#error "A4_TYRETWIN leaves out the twins of A4_CARANIM's animated faces"
+#endif
+#if defined(A4_TWINCEN) && defined(A4_TYREMAP)
+#error "A4_TWINCEN and A4_TYREMAP both write CUT1's place"
+#endif
+#define TW_NH 64u
+struct twtab { uint32_t na, nh; uint32_t idx[40]; int32_t p[40][9]; uint16_t h[TW_NH]; };
+_Static_assert(sizeof(struct twtab) % 8u == 0, "the twin table");
+static void tw_rest(uint32_t car, uint32_t verts, uint32_t vp, volatile int32_t *o)
+{
+    o[0] = (int32_t)GO32(vp + 0x18u); o[1] = (int32_t)GO32(vp + 0x1Cu); o[2] = (int32_t)GO32(vp + 0x20u);
+    for (uint32_t j = 0; j < 24u; j++) {
+        const int32_t i = GOS16(car + 0x1ACu + 2u * j);
+        if (i >= 0 && verts + 40u * (uint32_t)i == vp) { o[0] = GOS16(car + 0x20Cu + 2u * j); o[1] = GOS16(car + 0x23Cu + 2u * j); return; }
+    }
+}
+/* the 40 animated faces' corners at rest, then the faces to leave out (ascending) */
+static void tw_build(volatile struct twtab *T, uint32_t car, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf)
+{
+    uint32_t na = 0, nh = 0;
+    for (uint32_t k = 0; k < 40u; k++) {
+        const uint32_t fp = GO32(car + 0x26Cu + 4u * k);
+        if (fp < faces || fp >= faces + 52u * nf || (fp - faces) % 52u) continue;
+        uint32_t ok = 1;
+        for (uint32_t cn = 0; cn < 3u; cn++) {
+            const uint32_t vp = GO32(fp + 0xCu + 12u * cn);
+            if (vp < verts || vp >= verts + 40u * nv || (vp - verts) % 40u) { ok = 0; break; }
+            tw_rest(car, verts, vp, &T->p[na][3u * cn]);
+        }
+        if (ok) T->idx[na++] = (fp - faces) / 52u;
+    }
+    for (uint32_t f = 0; f < nf && nh < TW_NH; f++) {
+        const uint32_t fp = faces + 52u * f;
+        int32_t q[9];
+        uint32_t ok = 1;
+        for (uint32_t cn = 0; cn < 3u && ok; cn++) {
+            const uint32_t vp = GO32(fp + 0xCu + 12u * cn);
+            if (vp < verts || vp >= verts + 40u * nv || (vp - verts) % 40u) { ok = 0; break; }   /* the bake refuses it */
+            q[3u * cn] = (int32_t)GO32(vp + 0x18u); q[3u * cn + 1u] = (int32_t)GO32(vp + 0x1Cu); q[3u * cn + 2u] = (int32_t)GO32(vp + 0x20u);
+        }
+        if (!ok) continue;
+        uint32_t hit = 0;
+        for (uint32_t a = 0; a < na && !hit; a++) {
+            if (T->idx[a] >= f) continue;
+            const volatile int32_t *P = T->p[a];
+            for (uint32_t r = 0; r < 3u && !hit; r++) {          /* the same winding: any rotation of A's corners */
+                const uint32_t r1 = r == 2u ? 0u : r + 1u, r2 = r == 0u ? 2u : r - 1u;
+                hit = P[3u * r] == q[0] && P[3u * r + 1u] == q[1] && P[3u * r + 2u] == q[2]
+                   && P[3u * r1] == q[3] && P[3u * r1 + 1u] == q[4] && P[3u * r1 + 2u] == q[5]
+                   && P[3u * r2] == q[6] && P[3u * r2 + 1u] == q[7] && P[3u * r2 + 2u] == q[8];
+            }
+        }
+        if (!hit || gca_face(car, fp)) continue;
+        for (uint32_t cn = 0; cn < 3u && hit; cn++) if (gca_vert(car, verts, GO32(fp + 0xCu + 12u * cn))) hit = 0;
+        if (hit) T->h[nh++] = (uint16_t)f;
+    }
+    T->na = na; T->nh = nh;
+}
+#ifdef A4_TWINCEN
+static int tw_same(const int32_t *P, const int32_t *q)   /* the same corners in the same winding */
+{
+    for (uint32_t r = 0; r < 3u; r++) {
+        const uint32_t r1 = r == 2u ? 0u : r + 1u, r2 = r == 0u ? 2u : r - 1u;
+        if (P[3u * r] == q[0] && P[3u * r + 1u] == q[1] && P[3u * r + 2u] == q[2] && P[3u * r1] == q[3] && P[3u * r1 + 1u] == q[4]
+            && P[3u * r1 + 2u] == q[5] && P[3u * r2] == q[6] && P[3u * r2 + 1u] == q[7] && P[3u * r2 + 2u] == q[8]) return 1;
+    }
+    return 0;
+}
+static int tw_corners(uint32_t verts, uint32_t nv, uint32_t fp, int32_t *q)   /* 0: a corner off the vertex array */
+{
+    for (uint32_t cn = 0; cn < 3u; cn++) { const uint32_t vp = GO32(fp + 0xCu + 12u * cn);
+        if (vp < verts || vp >= verts + 40u * nv || (vp - verts) % 40u) return 0;
+        q[3u * cn] = (int32_t)GO32(vp + 0x18u); q[3u * cn + 1u] = (int32_t)GO32(vp + 0x1Cu); q[3u * cn + 2u] = (int32_t)GO32(vp + 0x20u); }
+    return 1;
+}
+/* bench: 'TWN1' in CUT1's place, at each bake of the animated mesh -- [1] such bakes, [2] its animated faces (rest corners
+ * read), [3] faces left out, [4] faces, [5] animated faces with a twin left out, [6] static faces on an animated face's
+ * corners at a LOWER index (the game shows those: kept), [7] pairs of static faces with the same corners and winding
+ * on different descriptors or flag words (the GPU's group order, not the game's, picks the one shown), [8] such pairs
+ * on the same descriptor, flags and corners' u v (identical pixels), [9] the first [7] pair's faces f | g << 16, [10]
+ * the mesh's slot, [11] the vertices, [12] pairs on the same descriptor and flags but other u v (other texels), [13]
+ * the first of those, [14..16] the steered faces not animated and their still twins (below) */
+static void tw_cen(const volatile struct twtab *T, uint32_t car, uint32_t verts, uint32_t nv, uint32_t faces, uint32_t nf, uint32_t slot)
+{
+    volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
+    if (U[0] != 0x314E5754u) { for (uint32_t k = 1; k < 20u; k++) U[k] = 0; U[0] = 0x314E5754u; }
+    U[1]++; U[2] = T->na; U[3] = T->nh; U[4] = nf; U[10] = slot; U[11] = nv;
+    uint32_t nt = 0, nl = 0, nd = 0, ns = 0, first = 0, nu = 0, firstu = 0;
+    for (uint32_t a = 0; a < T->na; a++) {
+        int32_t P[9]; for (uint32_t k = 0; k < 9u; k++) P[k] = T->p[a][k];
+        uint32_t tw = 0;
+        for (uint32_t f = 0; f < nf; f++) {
+            const uint32_t fp = faces + 52u * f;
+            if (f == T->idx[a] || gca_face(car, fp)) continue;
+            int32_t q[9];
+            if (!tw_corners(verts, nv, fp, q) || !tw_same(P, q)) continue;
+            if (f > T->idx[a]) tw = 1; else nl++;
+        }
+        nt += tw;
+    }
+    for (uint32_t f = 0; f < nf; f++) {
+        const uint32_t fp = faces + 52u * f;
+        if (gca_face(car, fp)) continue;
+        int32_t q[9];
+        if (!tw_corners(verts, nv, fp, q)) continue;
+        for (uint32_t g2 = f + 1u; g2 < nf; g2++) {
+            const uint32_t gp = faces + 52u * g2;
+            int32_t r[9];
+            if (!tw_corners(verts, nv, gp, r)) continue;
+            if (r[0] != q[0] && r[3] != q[0] && r[6] != q[0]) continue;     /* corner 0's x nowhere in it */
+            if (gca_face(car, gp) || !tw_same(q, r)) continue;
+            if (GO32(fp + 0x30u) != GO32(gp + 0x30u) || GO32(fp + 4u) != GO32(gp + 4u)) { if (!nd) first = f | g2 << 16; nd++; }
+            else {   /* the same descriptor and flags: the same texels only with each corner's u, v the same */
+                uint32_t uv = 1;
+                for (uint32_t cn = 0; cn < 3u && uv; cn++) {
+                    const uint32_t vp = GO32(fp + 0xCu + 12u * cn);
+                    uint32_t m = 3u;
+                    for (uint32_t cm = 0; cm < 3u; cm++) if (GO32(gp + 0xCu + 12u * cm) == vp
+                        || ((int32_t)GO32(GO32(gp + 0xCu + 12u * cm) + 0x18u) == q[3u * cn] && (int32_t)GO32(GO32(gp + 0xCu + 12u * cm) + 0x1Cu) == q[3u * cn + 1u]
+                            && (int32_t)GO32(GO32(gp + 0xCu + 12u * cm) + 0x20u) == q[3u * cn + 2u])) { m = cm; break; }
+                    uv = m < 3u && GO32(fp + 0x10u + 12u * cn) == GO32(gp + 0x10u + 12u * m) && GO32(fp + 0x14u + 12u * cn) == GO32(gp + 0x14u + 12u * m);
+                }
+                if (uv) ns++;
+                else { if (!nu) firstu = f | g2 << 16; nu++; }
+            }
+        }
+    }
+    U[5] = nt; U[6] = nl; U[7] = nd; U[8] = ns; U[9] = first; U[12] = nu; U[13] = firstu;
+    {   /* [14] faces not animated with a corner among the 24 (a steered tread), [15] faces with none lying on one of
+         * those at a higher index (its corners at rest), [16] at a lower */
+        uint32_t nm = 0, nhi = 0, nlo = 0;
+        for (uint32_t a = 0; a < nf; a++) {
+            const uint32_t ap = faces + 52u * a;
+            if (gca_face(car, ap)) continue;
+            uint32_t mv = 0, ok = 1;
+            for (uint32_t cn = 0; cn < 3u; cn++) {
+                const uint32_t vp = GO32(ap + 0xCu + 12u * cn);
+                if (vp < verts || vp >= verts + 40u * nv || (vp - verts) % 40u) { ok = 0; break; }
+                if (gca_vert(car, verts, vp)) mv = 1;
+            }
+            if (!ok || !mv) continue;
+            nm++;
+            int32_t P[9]; volatile int32_t Pv[9];
+            for (uint32_t cn = 0; cn < 3u; cn++) tw_rest(car, verts, GO32(ap + 0xCu + 12u * cn), &Pv[3u * cn]);
+            for (uint32_t k = 0; k < 9u; k++) P[k] = Pv[k];
+            for (uint32_t f = 0; f < nf; f++) {
+                if (f == a) continue;
+                const uint32_t fp = faces + 52u * f;
+                int32_t q[9];
+                if (!tw_corners(verts, nv, fp, q) || !tw_same(P, q)) continue;
+                uint32_t fm = 0;
+                for (uint32_t cn = 0; cn < 3u; cn++) if (gca_vert(car, verts, GO32(fp + 0xCu + 12u * cn))) fm = 1;
+                if (fm) continue;
+                if (f > a) nhi++; else nlo++;
+            }
+        }
+        U[14] = nm; U[15] = nhi; U[16] = nlo;
+    }
+}
+#endif
+static inline int tw_hid(const volatile struct twtab *T, uint32_t f, uint32_t *cur)   /* f ascending from cur = 0 */
+{
+    if (!T) return 0;
+    while (*cur < T->nh && T->h[*cur] < f) (*cur)++;
+    return *cur < T->nh && T->h[*cur] == f;
+}
+#endif
 static int gca_texok(uint32_t d)                    /* the bake's own test of a face's texture */
 {
     return d && GO32(d + 4u * TS_PIX) && GO8(d + 0x28u) == 0xFFu && GO32(d + 0x2Cu) == 0u
@@ -8680,9 +8878,26 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
      * face order, and its corners on the moved vertices (record | vertex index << 16) */
     const uint32_t acar = gca_car(verts);
     uint32_t nfa = 0, npa = 0, xu = 0;
+#ifdef A4_TYRETWIN
+    volatile struct twtab *TW = 0;
+    uint32_t twc = 0;
+    if (acar) {
+        if (g->full || GOBJ_ARENA + 12u * (g->aused + 3u * nf) + sizeof(struct twtab) > GOBJ_STAGE) {
+            g->full = 1; c->refused_full++; return 0;
+        }
+        TW = (volatile struct twtab *)(GOBJ_STAGE - sizeof(struct twtab));
+        tw_build(TW, acar, verts, nv, faces, nf);
+#ifdef A4_TWINCEN
+        tw_cen(TW, acar, verts, nv, faces, nf, c->nmesh);
+#endif
+    }
+#endif
     if (acar) {
         for (uint32_t f = 0; f < nf; f++) {
             const uint32_t fp = faces + 52u * f;
+#ifdef A4_TYRETWIN
+            if (tw_hid(TW, f, &twc)) continue;
+#endif
             if (gca_face(acar, fp)) nfa++;
             for (uint32_t cn = 0; cn < 3u; cn++) if (gca_vert(acar, verts, GO32(fp + 0xCu + 12u * cn))) npa++;
         }
@@ -8721,7 +8936,12 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
 #else
     const uint32_t xs = 0;
 #endif
-    if (g->full || c->nmesh >= GCAR_NM || GOBJ_ARENA + (g->aused + 3u * nf + xu + xs) * 12u > GOBJ_STAGE) {
+#ifdef A4_TYRETWIN
+    const uint32_t twb = TW ? (uint32_t)sizeof(struct twtab) : 0u;   /* the table stays above the records */
+#else
+    const uint32_t twb = 0;
+#endif
+    if (g->full || c->nmesh >= GCAR_NM || GOBJ_ARENA + (g->aused + 3u * nf + xu + xs) * 12u + twb > GOBJ_STAGE) {
         g->full = 1; c->refused_full++; return 0;
     }
     uint32_t *const aw = (uint32_t *)(GOBJ_ARENA + 12u * (g->aused + 3u * nf));
@@ -8737,6 +8957,9 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
     bnd[0] = bnd[1] = bnd[2] = 32767; bnd[3] = bnd[4] = bnd[5] = -32767;
     int16_t *rec = (int16_t *)(GOBJ_ARENA + g->aused * 12u);
     /* each face's group: its descriptor and class (the routine's for a face no vertex of which is near) */
+#ifdef A4_TYRETWIN
+    twc = 0;
+#endif
     for (uint32_t f = 0; f < nf; f++) {
         const uint32_t fp = faces + 52u * f, fl = GO32(fp + 4u), d = GO32(fp + 0x30u);
         const uint32_t cls = (fl & 0x4100000u) ? w1 : (w1 & ~0x4100000u);
@@ -8744,6 +8967,9 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
         if (cls == 0x104000u) m1 = 1u; else if (cls == 0x4000u) m1 = 0u; else { c->refused_class++; return 0; }
         if (!d || !GO32(d + 4u * TS_PIX) || GO8(d + 0x28u) != 0xFFu || GO32(d + 0x2Cu) != 0u
             || GO32(d + 4u) + 1u > 1024u || GO32(d + 8u) + 1u > 1024u) { c->refused_tex++; return 0; }
+#ifdef A4_TYRETWIN
+        if (tw_hid(TW, f, &twc)) continue;          /* checked as any face, then left out (the game never shows it) */
+#endif
 #ifdef A4_CARANIM
         uint32_t key = d, km = m1;                  /* an animated face: its class's live group, keyed by its first face */
         if (acar && gca_face(acar, fp)) { if (!rep[m1]) rep[m1] = fp; key = rep[m1]; km = m1 | 2u; aw[1u + na++] = fp | m1; }
@@ -8761,8 +8987,14 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
 #ifdef A4_CARANIM
         uint32_t ja = 0;
 #endif
+#ifdef A4_TYRETWIN
+        twc = 0;
+#endif
         for (uint32_t f = 0; f < nf; f++) {
             const uint32_t fp = faces + 52u * f, fl = GO32(fp + 4u);
+#ifdef A4_TYRETWIN
+            if (tw_hid(TW, f, &twc)) continue;
+#endif
             const uint32_t m1 = (((fl & 0x4100000u) ? w1 : (w1 & ~0x4100000u)) == 0x104000u) ? 1u : 0u;
 #ifdef A4_CARANIM
             uint32_t key = GO32(fp + 0x30u), km = m1;
@@ -8802,6 +9034,77 @@ static struct gcmesh *gcar_mesh(volatile struct gstate *g, volatile struct gcsta
         while (b) { if (x >= r + b) { x -= r + b; r = (r >> 1) + b; } else r >>= 1; b >>= 2; }
         me->rad = (uint16_t)(r + 1u > 0xFFFFu ? 0xFFFFu : r + 1u); }
     me->fp[0] = GO32(verts + 0x18u); me->fp[1] = GO32(verts + 0x1Cu); me->fp[2] = GO32(faces + 0xCu); me->fp[3] = GO32(faces + 0x30u);
+#ifdef A4_TYREMAP
+    if (acar) {   /* bench (round 89, the owner: "the front wheels are spinning. But the back wheels dont"): CUT1's place,
+                   * 'TYR1' -- [1] faces, [2] +1B084's list slots set, [3] of them in this mesh, [4] faces on a tyre frame's
+                   * descriptor (car+180[0..2]) not in the list, [5..7] those descriptors; from [8] the list's faces (40 x 2:
+                   * centroid x | y << 16, z | slot << 16), from [88] the others (40 x 2: x | y << 16, z | desc index << 16) */
+        volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
+        for (uint32_t k = 1; k < 170u; k++) U[k] = 0;
+        U[0] = 0x31525954u; U[1] = nf;
+        for (uint32_t k = 0; k < 3u; k++) U[5u + k] = GO32(acar + 0x180u + 4u * k);
+        for (uint32_t k = 0; k < 40u; k++) if (GO32(acar + 0x26Cu + 4u * k)) U[2]++;
+        uint32_t nl = 0, no = 0;
+        for (uint32_t f = 0; f < nf; f++) {
+            const uint32_t fp = faces + 52u * f, d = GO32(fp + 0x30u);
+            int32_t cx = 0, cy = 0, cz = 0;
+            for (uint32_t cn = 0; cn < 3u; cn++) { const uint32_t vp = GO32(fp + 0xCu + 12u * cn);
+                cx += (int32_t)GO32(vp + 0x18u); cy += (int32_t)GO32(vp + 0x1Cu); cz += (int32_t)GO32(vp + 0x20u); }
+            cx /= 3; cy /= 3; cz /= 3;
+            uint32_t slot = 0xFFFFu;
+            for (uint32_t k = 0; k < 40u; k++) if (GO32(acar + 0x26Cu + 4u * k) == fp) { slot = k; break; }
+            if (slot != 0xFFFFu) {
+                if (nl < 40u) { U[8u + 2u * nl] = ((uint32_t)cx & 0xFFFFu) | (uint32_t)cy << 16; U[9u + 2u * nl] = ((uint32_t)cz & 0xFFFFu) | slot << 16; }
+                nl++;
+            } else {
+                uint32_t di = 3u;
+                for (uint32_t k = 0; k < 3u; k++) if (d == U[5u + k]) di = k;
+                if (di < 3u) {
+                    if (no < 40u) { U[88u + 2u * no] = ((uint32_t)cx & 0xFFFFu) | (uint32_t)cy << 16; U[89u + 2u * no] = ((uint32_t)cz & 0xFFFFu) | di << 16; }
+                    no++;
+                }
+            }
+        }
+        U[3] = nl; U[4] = no;
+#ifdef A4_TYREMAP2
+        {   /* bench: 'TYR2' -- the side faces (normal along x only) on a tyre descriptor, list or not, with a corner at
+             * x >= 38 (one side's two wheels), in face order, 4 words each from [8]: centroid x | y << 16, z | (slot |
+             * 0x8000 for a list face, else the descriptor index; | 0x4000 with a corner among +1B084's 24 moved
+             * vertices) << 16, the face's index | nx << 16 (the model normal (v1 - v0) x (v2 - v0), clamped), its flag
+             * word +4; [1] how many */
+            for (uint32_t k = 1; k < 170u; k++) U[k] = 0;
+            U[0] = 0x32525954u;
+            uint32_t m = 0;
+            for (uint32_t f = 0; f < nf; f++) {
+                const uint32_t fp = faces + 52u * f, d = GO32(fp + 0x30u);
+                int32_t X[3], Y[3], Z[3];
+                for (uint32_t cn = 0; cn < 3u; cn++) { const uint32_t vp = GO32(fp + 0xCu + 12u * cn);
+                    X[cn] = (int32_t)GO32(vp + 0x18u); Y[cn] = (int32_t)GO32(vp + 0x1Cu); Z[cn] = (int32_t)GO32(vp + 0x20u); }
+                if (X[0] < 38 && X[1] < 38 && X[2] < 38) continue;
+                const int32_t ax = X[1] - X[0], ay = Y[1] - Y[0], az = Z[1] - Z[0], bx = X[2] - X[0], by = Y[2] - Y[0], bz = Z[2] - Z[0];
+                int32_t nx = ay * bz - az * by;
+                const int32_t ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+                if (!nx || ny || nz) continue;
+                uint32_t tag = 0xFFFFu;
+                for (uint32_t k = 0; k < 40u; k++) if (GO32(acar + 0x26Cu + 4u * k) == fp) { tag = 0x8000u | k; break; }
+                if (tag == 0xFFFFu) for (uint32_t k = 0; k < 3u; k++) if (d == GO32(acar + 0x180u + 4u * k)) tag = k;
+                if (tag == 0xFFFFu) continue;
+                for (uint32_t cn = 0; cn < 3u; cn++) if (gca_vert(acar, verts, GO32(fp + 0xCu + 12u * cn))) tag |= 0x4000u;
+                if (nx > 32767) nx = 32767;
+                if (nx < -32767) nx = -32767;
+                if (m < 40u) {
+                    volatile uint32_t *w = U + 8u + 4u * m;
+                    w[0] = ((uint32_t)((X[0] + X[1] + X[2]) / 3) & 0xFFFFu) | (uint32_t)((Y[0] + Y[1] + Y[2]) / 3) << 16;
+                    w[1] = ((uint32_t)((Z[0] + Z[1] + Z[2]) / 3) & 0xFFFFu) | tag << 16;
+                    w[2] = f | (uint32_t)nx << 16; w[3] = GO32(fp + 4u);
+                }
+                m++;
+            }
+            U[1] = m;
+        }
+#endif
+    }
+#endif
 #ifdef A4_CARDEFORM
 #ifdef A4_CARANIM
     GCVH[c->nmesh] = gcd_hash(verts, nv, acar);
@@ -9176,6 +9479,7 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
             /* bench (round 89, the owner: "the wheels don't spin"): the tyres' animated groups (A4_CARANIM's) magenta,
              * untextured -- where the GPU shows them at all */
             if (me->gm1[k] & 2u) { gl_disable(GL_TEXTURE_2D); gl_color4x(FX, 0, FX, FX); }
+            TYRE_GREEN(me, k)
             else { gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX); }
 #endif
 #ifdef A4_CARSTAGE
@@ -9519,6 +9823,7 @@ static void cvr_redraw(volatile struct glr *s)
                 if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
 #ifdef A4_ANIMTINT
                 if (me->gm1[k] & 2u) { gl_disable(GL_TEXTURE_2D); gl_color4x(FX, 0, FX, FX); }   /* bench: as gcar_flush's */
+                TYRE_GREEN(me, k)
                 else { gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX); }
 #endif
                 gl_drawarrays(GL_TRIANGLES, 3 * (int)me->gs[k], 3 * (int)me->gc[k]); draws++;

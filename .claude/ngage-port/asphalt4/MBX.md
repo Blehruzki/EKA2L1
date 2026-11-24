@@ -15303,6 +15303,45 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   dont. I noticed it by continuously steering to the left or right so they can be captured by the camera. Of course I
   prepared the car to perform this from the opposite side of where it's steering to. I didn't check the rest of the
   vehicles but that's what you will do and fix it accordingly." (r91f; the 350Z and the 599 GTB.)
+- **The rear wheels, reproduced** (steer.sh: '5' held 25 s, then 8 / 7 / 2 / 3 held 4 s each, twice, a full shot every
+  0.25 s). sat2_350 (C99 + A4_ANIMTINT, the 350Z): from the side, **the front wheel magenta (the animated faces) and the
+  rear wheel a textured five-spoke rim** -- the rear's animated faces drawn but covered (a magenta sliver at its edge).
+  sst2_350 (stock, the same drive): the rear rim shows; its spin cannot be told from crops that drift with the car.
+- **What covers them** (A4_TYREMAP2, 'TYR2': the faces on a tyre descriptor with a corner at x >= 38 and centroid
+  z < 0, with model normals; tm2.exe = C99 + A4_TYREMAP + A4_TYREMAP2). tm2_21 (the 599 GTB): **each of the z- wheel's
+  10 animated faces (x = 48, normal +x) has a static twin at the same centroid with the same normal, on car+180[0] (the
+  tyre's frame-0 image), its corners not among +1B084's 24 moved vertices**; the tread faces (x = 37 / 42, normal in
+  y-z) are doubled the same way, one copy on moved vertices, one not. tm2_2 drove the Veyron (the garage pick missed):
+  no twins on its z- wheel (10 animated faces at x = 48, the tread on car+180[1]). On the GPU the two copies are
+  coplanar, so whichever group is drawn later, or nearer once +1B084 bounces the animated copy, wins: a still wheel.
+- **Correction, and both wheels.** +1B084's 24 moved vertices are the steer shear's (above, round 88): the moved
+  faces are the **front** wheels', so tm2_21's z- wheel was the 599's front. TYR2 widened (the side faces, normal along
+  x only, with a corner at x >= 38: one side's two wheels, in face order, with the face's index and flag word):
+  tm2_2 (the 350Z, picked this time): the 20 animated side faces (front z- x = 44 on moved vertices, rear z+ x = 45 on
+  none) are faces 192-197, 208-213, 315-322; **each has a static twin on car+180[0], faces 1520-1650 (index + 1,328)**,
+  same corners, same normal, flag words 0. tm2_21 (the 599): animated 89-98 and 109-118, twins 1295-1324 (+1,206), the
+  same. **Stock shows the animated copy**: both copies have the same corners, so the same key (the deepest ZW) and
+  bucket, and the table draws a bucket newest first (round 27) -- the lower index, inserted first, is drawn last, on
+  top. On the GPU the twin group, drawn after the animated group at the same depth (GEQUAL), wins: the rear wheels,
+  never moved, show the frame-0 image always; the front ones only where the steer shear lifts the animated copy out of
+  the twin's plane -- the owner's front-spins, rear-doesn't.
+- **+1B084's vertex formula** (read at +1B12C-+1B28C): for each of the 24 (j, in fours, r = -3..3 without 0)
+  x = car+20C[j] + r * s / 1024 (s the steer, clamped to [-4096, 4096], 0 without steering; a quarter of it when +133E4
+  says so) and y = car+23C[j] + b (b the bounce, 0 while [car+B14] is 0); z is never written. So an animated face's
+  corners at rest are exact: car+20C / car+23C (24 int16 each) for its moved corners, the vertex for the others.
+- **Fix, A4_TYRETWIN** (a4_gl.c tw_build / tw_hid in gcar_mesh): at the bake of the mesh +1B084 animates, a face that
+  is not animated, has no corner among the 24, and lies on an animated face of lower index (its corners at rest, the
+  same three in the same winding) is left out -- the face the game's table always draws first and covers exactly (the
+  cars' textures pass gca_texok: opaque). Checked like any face first (class, texture), so a mesh refused before is
+  refused still. The table (the 40 faces' rest corners, up to 64 faces left out; 1,736 bytes) sits at the top of the
+  objects' arena, above the bake's records (the full test counts it). A twin at a LOWER index than its animated face
+  (the game would show the still one) is kept. Bench: A4_TWINCEN ('TWN1' in CUT1's place: bakes, animated faces,
+  faces left out, animated faces with a twin, lower twins, static same-corner pairs on different descriptors or flags
+  -- the same GPU-order question elsewhere on a car -- and on the same ones).
+- stt_350 / stt_599 (C99 + A4_TYRETWIN + A4_ANIMTINT, steer.sh as sat2): **front and rear wheels magenta on both
+  cars**, from either side (the 350Z's most-magenta shot 757 pixels, sat2's 204). The 350Z's glass also magenta here:
+  the tint's colour left set into the reflection pass that follows the groups (m1s_pass), the tint's own artifact --
+  without it the colour is always white.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
