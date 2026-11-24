@@ -15342,6 +15342,45 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   cars**, from either side (the 350Z's most-magenta shot 757 pixels, sat2's 204). The 350Z's glass also magenta here:
   the tint's colour left set into the reflection pass that follows the groups (m1s_pass), the tint's own artifact --
   without it the colour is always white.
+  (m1s_pass binds its paint but neither enables texturing nor sets the colour; in sat2 the last group drawn before it
+  was the twins', textured and white.)
+- **All 28** (steer28.sh: twct99.exe = C99 + A4_TYRETWIN + A4_TWINCEN + A4_ANIMTINT; LA, '5' 25 s, then 8 and 2 held
+  4 s each, a shot every 0.25 s; py/tw28.py, the sheet view/sx_sheet.png): **only the 350Z and the 599 GTB have
+  twins** -- 40 animated faces, 40 twins left out, each animated face twinned, besides ~800 static same-corner pairs on
+  the same descriptor (778 / 808: the two models carry a second copy of more than their tyres). Every other vehicle: 40
+  animated faces (the four bikes too: +1B084 animates them), none twinned, nothing left out, 0-2 static same-corner
+  pairs. **No vehicle has a twin at a lower index than its animated face, and none has static same-corner faces on
+  different descriptors or flags.** In every vehicle's most-magenta shot the visible side's front and rear tyres (the
+  bikes' two) are the animated faces; the F430 Scuderia's camera stayed behind it (31 pixels; no twins, so as C99).
+  Faults: the boot fault only, in each.
+- **The census widened** (twc2.exe = C100 + A4_TWINCEN with the corners' u v compared and the steered faces counted;
+  sc_2 / sc_21): 350Z -- 40 static same-corner pairs on the same descriptor, flags and u v (the same texels), **768 on
+  the same descriptor and flags but other u v** (the first faces 14 / 1344), **52 faces not animated with a corner
+  among the 24 (the front treads) and 52 still faces on them at a higher index**, 0 at a lower; 599 GTB -- 30, **748**
+  (0 / 1205), **20 and 20**, 0. Both are the twins' question again: the game shows the lower index of two faces with
+  the same corners (the same bucket, drawn last); the GPU draws a group's records in face order at GEQUAL, so where
+  the two share a group it shows the higher one -- the second copy's texels on ~760 faces of these two models -- and a
+  still tread poking out of a steered front wheel. A4_TYRETWIN covers only the 40 animated faces.
+- **A4_CARTWIN replaces A4_TYRETWIN** (never sent; C100 now = C99 + -DA4_CARTWIN): the game's own rule for every car
+  mesh the GPU bakes, opponents' included -- a face lying on a face of lower index (the same three corners at rest, the
+  same winding) is left out. At rest: the animated mesh's 24 vertices at +1B084's bases, so the still twins of the
+  animated faces and of the steered treads are found while the wheels steer or bounce; a face with a corner among the
+  24 is left out only on a face of the same three vertices (the two always move together). Found by a hash of the
+  three corners (a sum of per-corner hashes: no rotation matters) in 1,024 buckets with a 16-bit check, each candidate
+  checked exactly; 12 KB (heads, links with the left-out bit, checks, a vertex -> slot map; meshes of up to 2,048
+  faces and vertices -- the biggest car, the 350Z, 1,792 / 939) **in the objects' staging (GOBJ_STAGE)**, which only a
+  flush fills and draws (each fill drawn at once, the next fill over it); the bake is never inside a flush. (First at
+  the arena's top, reserved at every car bake -- the arena full 12 KB sooner for every car; moved, no reservation.)
+  Bench: A4_TWINCEN now 'TWN2' (meshes, meshes with faces left out, faces left out; the player's mesh: faces, left out
+  on an animated / a steered / a still face with the same texels / other texels, animated faces left out, steered
+  faces kept on a twin of other vertices).
+- sy (twct3.exe = C100 at the arena's top + A4_TWINCEN + A4_ANIMTINT, steer28.sh, all 28): sy_21 (the 599 GTB) -- 9
+  car meshes baked, 2 with faces left out, 820 left out; the player's 1,692 faces, **818 left out: 40 on the animated
+  tyre faces, 20 on the steered treads, 30 on still faces with the same texels, 728 on still faces with other texels**
+  (the texels the GPU showed instead of the game's), no animated face left out, no steered face kept. sy_2 (the 350Z)
+  never left the garage menu (the harness's keys; the boot fault only): run again. Bikes: Monster 696 0 left out of 694,
+  Z1000 1 of 810 (other texels), ZX-10 R 2 of 752 (other texels); opponents' meshes a few each (Z1000's run 6 in 59
+  bakes, ZX-10 R's 38 in 102).
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
