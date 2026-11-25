@@ -15394,6 +15394,14 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   this tree to their bytes (C96 47a0f91a, r91f's; C99 5db4e27f). un100_2 / un99_2 (C100 / C99 untinted, the 350Z,
   the same drive): the car, glass, lamps and wheels drawn alike in every shot -- no artifact from the faces left out;
   the rear tyre's spin is motion, for the phone.
+- un100_21 / un99_21 (the 599 GTB): C100 drawn normally (body, glass, lamps, wheels); C99's run met the steering at
+  another speed, its frames not comparable, drawn normally too.
+- sy_17 .. sy_26 (twct4): the player's mesh -- none left out on the F430 Spider, ZR1, Mustang, DBS, Ford GT, F430
+  Scuderia, CLK, Enzo; opponents' 0-4 faces a run. **All 28 vehicles done** (view/sy_sheet.png): on every car the
+  visible side's front and rear tyres are the animated faces, on every bike both wheels; the player's mesh loses faces
+  only on the 350Z (848), the 599 GTB (818), the Z1000 (1), the ZX-10 R (2), the M3 (2) and the RUF RGT (2); no
+  animated face left out and no steered face kept on any. Faults: the boot fault only, in each. (Magenta glass on some
+  cars in the sheet: the tint's colour carried into m1s_pass, above.)
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
