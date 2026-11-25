@@ -15459,6 +15459,17 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
 - **The owner on r91g**: "tested.. all good except for the z1000. it suffers from the same shadows issue and the
   braking light doesn't work" -- the wheels, the 350Z / 599 and the other vehicles good; the Z1000 still with the dark
   patch braking (the r91f brake-light shadow), and its brake light not lighting.
+- **The Z1000 braking on the bench** (brake.sh: '5' 22 s, then three times '5' up and '6' held 3 s with a shot every
+  0.25 s, '5' again 8 s; bk_st_12 stock, bk_100_12 C100; bk_sh_12 / bk_ci_12 / bk_cv_12 = C100 + A4_SHADTINT /
+  A4_CARITEMTINT / A4_CVRTINT): **not reproduced**. Braking upright, straight behind: no glow on stock or C100, the
+  tail cowl the same in both. Braking leaning (the third): the brake glow -- a pink-red rectangle at the bike's right
+  rear -- in stock and in C100 alike, shot for shot. The shadow (tinted) stays on the road, never on the bike. The
+  cover redraw (tinted) repaints the bike's body each render; the game draws the rider (A4_CARDEFORM's handoff, its
+  pose moving) except in a few renders. No dark rectangle at the lamp in any C100 shot. (Script fix on the way:
+  `timeout 0` waits forever -- the tail wait now only with TAIL > 0; one overlap of two queues, stopped and rerun.)
+  One bench / phone difference that could matter: the emulator gives the game a D24S8 depth buffer (egl.cpp
+  EGL_DEPTH_SIZE 24), the MBX its own on-chip depth -- the glow sits at nearly the tail's depth. A lead, not shown.
+  Asked the owner for a video of the Z1000 braking on r91g.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
