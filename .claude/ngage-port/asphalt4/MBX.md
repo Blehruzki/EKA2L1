@@ -15381,6 +15381,15 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   never left the garage menu (the harness's keys; the boot fault only): run again. Bikes: Monster 696 0 left out of 694,
   Z1000 1 of 810 (other texels), ZX-10 R 2 of 752 (other texels); opponents' meshes a few each (Z1000's run 6 in 59
   bakes, ZX-10 R's 38 in 102).
+- (The container restarted after sy_1; the rest on twct4.exe = the final C100, the table in the staging, + A4_TWINCEN +
+  A4_ANIMTINT.) sy_2 (the 350Z, again): 9 car meshes, 3 with faces left out, 850 left out; the player's 1,792 faces,
+  **848 left out: 40 on the animated tyre faces, 52 on the steered treads, 40 on still faces with the same texels, 716
+  with other texels**; none animated, no steered face kept. Veyron, Ducati 1098: none left out; Mini: 2 of an
+  opponent's.
+- sy_3 .. sy_16 (twct4; another restart after sy_16): the player's mesh -- M3 2 of 960 left out and RUF RGT 2 of 636
+  (other texels), none on the SLK55, Corvette, Skyline GTR, Z4M, Vantage, Exige, GT-R, M6, SL63, DB9; none animated, no
+  steered face kept anywhere; opponents' meshes 0-10 faces a run. Tyres magenta front and rear in every one's
+  most-magenta shot (138-431 pixels). Faults: the boot fault only.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
