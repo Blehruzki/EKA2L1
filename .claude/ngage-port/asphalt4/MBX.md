@@ -15390,6 +15390,10 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   (other texels), none on the SLK55, Corvette, Skyline GTR, Z4M, Vantage, Exige, GT-R, M6, SL63, DB9; none animated, no
   steered face kept anywhere; opponents' meshes 0-10 faces a run. Tyres magenta front and rear in every one's
   most-magenta shot (138-431 pixels). Faults: the boot fault only.
+- **C100 = C99 + -DA4_CARTWIN** (scratch 0x1C3000): sha256 78c7906003fad043..., 1,029,056 bytes. C90-C99 rebuilt from
+  this tree to their bytes (C96 47a0f91a, r91f's; C99 5db4e27f). un100_2 / un99_2 (C100 / C99 untinted, the 350Z,
+  the same drive): the car, glass, lamps and wheels drawn alike in every shot -- no artifact from the faces left out;
+  the rear tyre's spin is motion, for the phone.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The

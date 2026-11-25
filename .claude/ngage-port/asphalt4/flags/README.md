@@ -182,9 +182,10 @@ items pending the cover redraw draw the batch and the redraw first. Scratch as r
 Bench only: `-DA4_CARDEFORMCEN` (CRK1 [40..45]), `-DA4_WHEELDESC`, `-DA4_WHEELSHOW` (with WHEELDESC), `-DA4_SPINCEN`,
 `-DA4_ANIMTINT`, `-DA4_CARITEMTINT`, `-DA4_CVRTINT`, `-DA4_SHADTINT`, `-DA4_CARMESHLOG` (MBX.md round 89).
 
-C100.flags = C99.flags with `-DA4_TYRETWIN` (round 89, the owner: "the front wheels are spinning. But the back wheels
-dont"): the bake of the mesh +1B084 animates leaves out each static face lying on an animated face of lower index
-(the tyres' frame-0 twins, which the game's table always draws under the animated face). Scratch as C99
-(`A4_SCRATCH_SIZE=0x1C3000`); the twin table is 1,736 bytes at the top of the objects' arena. Bench only:
-`-DA4_TWINCEN` (CUT1's place 'TWN1'; not with A4_TYREMAP), `-DA4_TYREMAP` / `-DA4_TYREMAP2` ('TYR1' / 'TYR2': the
-tyres' faces), `-DA4_TYRETINT` (with A4_ANIMTINT: static faces on a tyre descriptor green).
+C100.flags = C99.flags with `-DA4_CARTWIN` (round 89, the owner: "the front wheels are spinning. But the back wheels
+dont"): every car mesh's bake leaves out each face lying on a face of lower index (the same corners at rest, the same
+winding) -- the copy the game's table always draws first and covers. The 350Z and the 599 GTB carry ~800 faces twice
+(the tyres' still twins among them); a few faces on other models. The 12 KB table lives in the objects' staging. Scratch
+as C99 (`A4_SCRATCH_SIZE=0x1C3000`). sha256 78c7906003fad043..., 1,029,056 bytes. Bench only: `-DA4_TWINCEN` (CUT1's
+place 'TWN2'; not with A4_TYREMAP), `-DA4_TYREMAP` / `-DA4_TYREMAP2` ('TYR1' / 'TYR2': the tyres' faces),
+`-DA4_TYRETINT` (with A4_ANIMTINT: static faces on a tyre descriptor green).
