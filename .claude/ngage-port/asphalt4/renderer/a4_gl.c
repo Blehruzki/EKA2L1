@@ -9389,7 +9389,7 @@ static void spc_note(volatile struct glr *s, const volatile struct gcitem *it, c
     U[90] = s->frames; U[91] = na ? spc_frame(GO32((aw[1] & ~3u) + 0x30u)) : 3u;
     const volatile int32_t *M = it->M;
     for (uint32_t L = 0; L < 4u; L++) {
-        U[92u + 2u * L] = 0; U[93u + 2u * L] = mv[L] << 1;
+        U[92u + 2u * L] = 0; U[93u + 2u * L] = mv[L] << 1; U[168u + L] |= mv[L];   /* [168 + L]: steered (front) */
         if (!n[L]) continue;
         const int32_t c0 = spc_div(S[L][0], (int32_t)(3u * n[L])), c1 = spc_div(S[L][1], (int32_t)(3u * n[L])),
                       c2 = spc_div(S[L][2], (int32_t)(3u * n[L]));

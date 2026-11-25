@@ -15423,6 +15423,15 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   the steered disc's own turn); **no pixel of another frame's colour on any wheel in any render** (no stale image).
   Shots: wheels violet / magenta both sides moving, blue standing; WHEELSHOW at a stop shows the 599's two tyre
   images, a star rim at two angles.
+- **Before and after, per wheel** (py/spv.py: renders with the wheel facing at cos' >= .1, those showing 4+ pixels of
+  the render's own frame, the mean pixels of it; z- the front, +1B084's steered wheels): sp99_21 (C99 = r91f's wheels,
+  the 599) -- **rear +x 0/30, 0 px; rear -x 0/27, 0 px**; front +x 4/27 24 px, front -x 17/17 66 px (the steer shear
+  lifts part of the front disc out of its twin's plane). sp100_21 (C100) -- rear 14/36 113 px and 27/27 242 px, front
+  6/30 39 px and 17/17 79 px. sp99_2 (C99, the 350Z) -- rear 11/37 **3 px**, 7/26 **2 px** (slivers), front 10/33 42 px,
+  17/17 49 px; sp100_2 (C100) -- rear 14/37 124 px, 29/29 188 px, front 12/37 55 px, 19/19 68 px. sp99_0 (C99, the
+  Veyron: no twins, C100 leaves it as it is) -- +x 11/33 92 px, 8/32 51 px; -x 34/34 253 px, 32/32 271 px: the +x side's
+  lower share is the drive's camera (it meets that side at grazing angles), not the cars. No pixel of another frame's
+  colour on any wheel of any run. The frame changed in 140-279 of 400-450 renders read (every render while moving).
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
