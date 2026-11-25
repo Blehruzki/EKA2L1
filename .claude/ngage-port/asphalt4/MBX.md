@@ -15444,6 +15444,12 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   faces out -- as r91f), the rear disc seen edge-on behind the exhaust from the chase camera (49/109, 27 px), the
   whole disc violet in a crash; Z1000 crashed early and stood (frame 0, blue, in most shots: 72 frame changes) --
   run again. Before (C99): the 599's rear wheels 0/34 at >= .1 and 0/13 at >= .2, the 350Z's 2-3 pixels.
+- The Z1000 again: sp100b_12 (the same drive) crashed at the same place (deterministic; 72 changes) -- while it ran,
+  rear +x 87/87 and front +x 86/87 at >= .2, -x seen 2-4 renders; sp100c_12 (FWD 12 s, 2 then 8): steering began at
+  0 km/h, then a crash into the rail ("TOO CLOSE") -- rear and front +x 87/87 each at >= .2; its two tyre images (an
+  orange disc at two angles) shown at the stops; sp100d_12 (FWD 22 s, 2 and 8 held 2 s each, four times): no crash,
+  224 frame changes -- rear -x 18/18 (86 px), rear +x 9/9 at >= .2, the front wheel (behind the fairing and rider from
+  the chase camera) 10/44 and 2/14. C90-C100 rebuilt from this tree to their bytes (C100 78c7906003fad043).
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The

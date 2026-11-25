@@ -188,4 +188,8 @@ winding) -- the copy the game's table always draws first and covers. The 350Z an
 (the tyres' still twins among them); a few faces on other models. The 12 KB table lives in the objects' staging. Scratch
 as C99 (`A4_SCRATCH_SIZE=0x1C3000`). sha256 78c7906003fad043..., 1,029,056 bytes. Bench only: `-DA4_TWINCEN` (CUT1's
 place 'TWN2'; not with A4_TYREMAP), `-DA4_TYREMAP` / `-DA4_TYREMAP2` ('TYR1' / 'TYR2': the tyres' faces),
-`-DA4_TYRETINT` (with A4_ANIMTINT: static faces on a tyre descriptor green).
+`-DA4_TYRETINT` (with A4_ANIMTINT: static faces on a tyre descriptor green), `-DA4_FRAMETINT` (with A4_ANIMTINT and A4_WHEELDESC: the animated
+tyre faces coloured by the frame -- 1 magenta, 2 violet, 0 blue; the reflection pass after them untinted), `-DA4_SPINCHECK`
+(with A4_FRAMETINT: each wheel's hub projected at the car draw and its square read after the composite -- CUT1's place
+from [90], 'SPC1' at [100]; build with `-UTEL_EVERY -DTEL_EVERY=40` so a capture falls after a bench drive; readers
+spc.py / spv.py in the scratchpad).
