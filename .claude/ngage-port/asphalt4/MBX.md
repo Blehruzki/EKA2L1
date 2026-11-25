@@ -15450,6 +15450,12 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   orange disc at two angles) shown at the stops; sp100d_12 (FWD 22 s, 2 and 8 held 2 s each, four times): no crash,
   224 frame changes -- rear -x 18/18 (86 px), rear +x 9/9 at >= .2, the front wheel (behind the fairing and rider from
   the chase camera) 10/44 and 2/14. C90-C100 rebuilt from this tree to their bytes (C100 78c7906003fad043).
+- **r91g = C100 sent** (the owner: "send it"), unbaked, sha256 78c7906003fad043d72f0a1771cf92e21daf581e8bd6939c3b250b6d0f01f6be,
+  1,029,056 bytes. **The usual battery was not run first** (the owner chose to send); its bench record is the 28-vehicle
+  runs above (C100 builds with probes, the boot fault only) and the untinted 350Z / 599 runs. What it changes against
+  r91f: A4_CARDEFORM (the bikes' rider), A4_BBREDRAWFIRST (the brake-light shadow), A4_CARTWIN (the 350Z / 599 GTB
+  wheels and second copy). For the phone: every wheel spinning on the 350Z and 599 GTB, front and rear; the Z1000's
+  tank no longer over the rider; no dark patch at the tail lights braking.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
