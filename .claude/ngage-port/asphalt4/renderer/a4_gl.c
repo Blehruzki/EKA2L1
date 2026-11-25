@@ -7322,6 +7322,30 @@ static int tyre_static(const struct gcmesh *me, uint32_t k)
 #else
 #define TYRE_GREEN(me, k)
 #endif
+#ifdef A4_FRAMETINT
+#if !defined(A4_ANIMTINT) || !defined(A4_WHEELDESC)
+#error "A4_FRAMETINT colours A4_ANIMTINT's groups by the frame of A4_WHEELDESC's car"
+#endif
+/* bench (round 89, the owner: "make a thorough check on all vehicles to ensure all wheels are spinning"): which of the
+ * player's tyre frames (car+180[0..2]) a descriptor is, 3 if none; its colour -- frame 1 magenta, frame 2 violet,
+ * frame 0 blue (none of the three met on any vehicle's screen otherwise) */
+static uint32_t spc_frame(uint32_t d)
+{
+    const volatile uint32_t *U = (const volatile uint32_t *)A4_GL_CUT;
+    const uint32_t car = U[0] == 0x31534457u ? U[2] : 0u;
+    if (car) for (uint32_t j = 0; j < 3u; j++) if (GO32(car + 0x180u + 4u * j) == d) return j;
+    return 3u;
+}
+static void tint_frame(uint32_t d)
+{
+    const uint32_t k = spc_frame(d);
+    if (k == 1u) gl_color4x(FX, 0, FX, FX); else if (k == 2u) gl_color4x(FX / 2, 0, FX, FX);
+    else if (k == 0u) gl_color4x(0, 0, FX, FX); else gl_color4x(FX, FX, FX, FX);
+}
+#define ANIM_COLOUR(me, k) tint_frame(GC_GD(me, k))
+#else
+#define ANIM_COLOUR(me, k) gl_color4x(FX, 0, FX, FX)
+#endif
 #else
 #define GC_GD(me, k) ((me)->gd[k])
 #define GC_M1(me, k) ((me)->gm1[k])
@@ -9297,6 +9321,161 @@ static int a4_car_take_i(uint32_t cam, uint32_t verts, uint32_t nv, uint32_t fac
     return 1;
 }
 /* the frame's cars, after the scenery and before the list: a modelview a car, a draw a group */
+#ifdef A4_SPINCHECK
+#ifndef A4_FRAMETINT
+#error "A4_SPINCHECK reads A4_FRAMETINT's colours"
+#endif
+/* Bench (round 89, the owner: "make a thorough check on all vehicles to ensure all wheels are spinning"): at the GPU's
+ * draw of the mesh +1B084 animates, each wheel -- its animated faces grouped by side (the sign of their normal's x)
+ * and end (of their z) -- is projected (the hub: the faces' mean, through the car's matrix and the game's projection,
+ * sx = cx + F x / w, sy = cy - F y / w); one facing the camera (its side's normal within ~75 degrees of the view) and
+ * on screen is read after the composite (spc_read): the 3 x 3 pixels there must show the colour of the tyre frame the
+ * game set for this render (A4_FRAMETINT). CUT1's place from [90]: [90] the render noted, [91] its frame, [92..99]
+ * per wheel its point x | y << 16 and on | steered << 1; [100] 'SPC1', [101] renders noted, [102] read, [103] read
+ * with no known frame, [140] the last frame read, [141] frame changes between reads, [142] / [143] the mesh's faces
+ * / vertices; per wheel L (0 side +x end +z,
+ * 1 +x -z, 2 -x +z, 3 -x -z) at [104 + 8 L]: [0] facing and on screen, [1] showing this render's frame, [2] showing
+ * the other frame's colour, [3] no frame colour (covered), [4] changes of the frame shown, [5] the last frame shown |
+ * steered << 8, [6] the last point, [7] the last centre pixel (565) */
+static int32_t spc_div(int32_t a, int32_t b)          /* a / b for b > 0, with no divide helper */
+{
+    uint32_t ua = a < 0 ? (uint32_t)-a : (uint32_t)a, q = 0, r = 0;
+    for (int i = 31; i >= 0; i--) { r = (r << 1) | ((ua >> i) & 1u); if (r >= (uint32_t)b) { r -= (uint32_t)b; q |= 1u << i; } }
+    return a < 0 ? -(int32_t)q : (int32_t)q;
+}
+static void spc_note(volatile struct glr *s, const volatile struct gcitem *it, const struct gcmesh *me, int32_t F,
+                     int32_t cx, int32_t cy)
+{
+    volatile struct gcanim *A = GCANIM;
+    if (A->magic != GCANIM_MAGIC || !A->mi || me != &GCMESH[A->mi - 1u] || A->verts != me->verts || !A->info) return;
+    volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
+    if (U[100] != 0x31435053u) {
+        for (uint32_t k = 90; k < 256u; k++) U[k] = 0;
+        for (uint32_t L = 0; L < 4u; L++) U[104u + 8u * L + 5u] = 0xFFu;
+        U[140] = 0xFFu; U[100] = 0x31435053u;
+    }
+    U[101]++; U[142] = me->nf; U[143] = me->nv;      /* which mesh: the vehicle */
+    const uint32_t *aw = (const uint32_t *)(uintptr_t)A->info, na = aw[0] & 0xFFFFu;
+    const uint32_t car = U[0] == 0x31534457u ? U[2] : 0u;
+    int32_t S[4][3]; uint32_t n[4], mv[4];
+    for (uint32_t L = 0; L < 4u; L++) { S[L][0] = S[L][1] = S[L][2] = 0; n[L] = 0; mv[L] = 0; }
+    for (uint32_t a = 0; a < na && a < 64u; a++) {
+        const uint32_t fp = aw[1u + a] & ~3u;
+        int32_t X[3], Y[3], Z[3]; uint32_t m = 0;
+        for (uint32_t cn = 0; cn < 3u; cn++) {
+            const uint32_t vp = GO32(fp + 0xCu + 12u * cn);
+            X[cn] = (int32_t)GO32(vp + 0x18u); Y[cn] = (int32_t)GO32(vp + 0x1Cu); Z[cn] = (int32_t)GO32(vp + 0x20u);
+            if (car && gca_vert(car, me->verts, vp)) m = 1;
+        }
+        const int32_t nx = (Y[1] - Y[0]) * (Z[2] - Z[0]) - (Z[1] - Z[0]) * (Y[2] - Y[0]);
+        const int32_t sz = Z[0] + Z[1] + Z[2];
+        const uint32_t L = (nx > 0 ? 0u : 2u) + (sz > 0 ? 0u : 1u);
+        S[L][0] += X[0] + X[1] + X[2]; S[L][1] += Y[0] + Y[1] + Y[2]; S[L][2] += sz; n[L]++; mv[L] |= m;
+    }
+    int32_t rad[4] = { 0, 0, 0, 0 };
+    for (uint32_t a = 0; a < na && a < 64u; a++) {                   /* each wheel's radius about its hub */
+        const uint32_t fp = aw[1u + a] & ~3u;
+        int32_t X[3], Y[3], Z[3];
+        for (uint32_t cn = 0; cn < 3u; cn++) { const uint32_t vp = GO32(fp + 0xCu + 12u * cn);
+            X[cn] = (int32_t)GO32(vp + 0x18u); Y[cn] = (int32_t)GO32(vp + 0x1Cu); Z[cn] = (int32_t)GO32(vp + 0x20u); }
+        const int32_t nx = (Y[1] - Y[0]) * (Z[2] - Z[0]) - (Z[1] - Z[0]) * (Y[2] - Y[0]);
+        const uint32_t L = (nx > 0 ? 0u : 2u) + (Z[0] + Z[1] + Z[2] > 0 ? 0u : 1u);
+        const int32_t hy = spc_div(S[L][1], (int32_t)(3u * n[L])), hz = spc_div(S[L][2], (int32_t)(3u * n[L]));
+        for (uint32_t cn = 0; cn < 3u; cn++) {
+            const int32_t dy = Y[cn] - hy, dz = Z[cn] - hz, e = (dy < 0 ? -dy : dy) > (dz < 0 ? -dz : dz) ? (dy < 0 ? -dy : dy) : (dz < 0 ? -dz : dz);
+            if (e > rad[L]) rad[L] = e;
+        }
+    }
+    U[90] = s->frames; U[91] = na ? spc_frame(GO32((aw[1] & ~3u) + 0x30u)) : 3u;
+    const volatile int32_t *M = it->M;
+    for (uint32_t L = 0; L < 4u; L++) {
+        U[92u + 2u * L] = 0; U[93u + 2u * L] = mv[L] << 1;
+        if (!n[L]) continue;
+        const int32_t c0 = spc_div(S[L][0], (int32_t)(3u * n[L])), c1 = spc_div(S[L][1], (int32_t)(3u * n[L])),
+                      c2 = spc_div(S[L][2], (int32_t)(3u * n[L]));
+        const int32_t vx = ((M[0] * c0 + M[3] * c1 + M[6] * c2) >> 14) + M[9];
+        const int32_t vy = ((M[1] * c0 + M[4] * c1 + M[7] * c2) >> 14) + M[10];
+        const int32_t vz = ((M[2] * c0 + M[5] * c1 + M[8] * c2) >> 14) + M[11];
+        const int32_t w = -vz;
+        volatile uint32_t *D = U + 144u + 6u * L;            /* debug: c, v, the facing measure, the point, why not */
+        D[0] = ((uint32_t)c0 & 0xFFFFu) | (uint32_t)c2 << 16; D[1] = ((uint32_t)vx & 0xFFFFu) | (uint32_t)vy << 16; D[2] = (uint32_t)vz;
+        D[5] = 1u;
+        if (w < ZK) continue;
+        const int32_t sd = L < 2u ? 1 : -1;
+        const int64_t dot = (int64_t)sd * ((int64_t)M[0] * vx + (int64_t)M[1] * vy + (int64_t)M[2] * vz);
+        int32_t mx = vx < 0 ? -vx : vx; if ((vy < 0 ? -vy : vy) > mx) mx = vy < 0 ? -vy : vy; if (w > mx) mx = w;
+        D[3] = (uint32_t)(int32_t)(-dot >> 14) ; D[5] = 2u;
+        /* how squarely it faces: cos' = (n . -v) / max(|vx|, |vy|, w), at least the cosine; bins < 0, 0-.1, .1-.2,
+         * .2-.3, >= .3 */
+        const int32_t cq = spc_div((int32_t)(-dot >> 14) * 1000, mx);
+        const uint32_t bin = cq < 0 ? 0u : cq < 100 ? 1u : cq < 200 ? 2u : cq < 300 ? 3u : 4u;
+        const int32_t sx = cx + spc_div(F * vx, w), sy = cy - spc_div(F * vy, w);
+        D[4] = ((uint32_t)sx & 0xFFFFu) | (uint32_t)sy << 16; D[5] = 3u;
+        if (sx < 2 || sx > VP_W - 3 || sy < 2 || sy > VP_H - 3) continue;
+        int32_t rp = spc_div(F * rad[L], w) + 1;                     /* its radius on screen */
+        if (rp > 60) rp = 60;
+        U[92u + 2u * L] = (uint32_t)sx | (uint32_t)sy << 16;
+        U[93u + 2u * L] |= 4u | bin << 8 | (uint32_t)rp << 16;             /* on screen, binned, its radius */
+        if (-dot * 4 < (int64_t)16384 * mx) continue;                    /* edge on or turned away */
+        D[5] = 4u;
+        U[92u + 2u * L] = (uint32_t)sx | (uint32_t)sy << 16; U[93u + 2u * L] |= 1u;
+    }
+}
+static uint32_t spc_cls(uint32_t p)                    /* a 565 pixel: 0 blue, 1 magenta, 2 violet, 3 none */
+{
+    const uint32_t r = p >> 11, g = (p >> 5) & 63u, b = p & 31u;
+    if (g > 8u || b < 28u) return 3u;
+    if (r >= 28u) return 1u;
+    if (r >= 12u && r <= 20u) return 2u;
+    if (r <= 4u) return 0u;
+    return 3u;
+}
+static void spc_read(volatile struct glr *s)
+{
+    volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
+    if (U[100] != 0x31435053u || U[90] != s->frames) return;
+    U[90] = 0xFFFFFFFFu;
+    const uint32_t bb = *(volatile uint32_t *)A4_GL_BB, want = U[91];
+    if (!bb) return;
+    U[102]++;
+    if (want > 2u) { U[103]++; return; }
+    if (U[140] != 0xFFu && U[140] != want) U[141]++;
+    U[140] = want;
+    const volatile uint16_t *px = (const volatile uint16_t *)bb;
+    for (uint32_t L = 0; L < 4u; L++) {
+        if (!(U[93u + 2u * L] & 4u)) continue;                        /* on screen */
+        const uint32_t sx = U[92u + 2u * L] & 0xFFFFu, sy = U[92u + 2u * L] >> 16;
+        uint32_t cnt[4] = { 0, 0, 0, 0 };
+        for (uint32_t dy = 0; dy < 3u; dy++)
+            for (uint32_t dx = 0; dx < 3u; dx++) cnt[spc_cls(px[(sy + dy - 1u) * VP_W + sx + dx - 1u])]++;
+        {   /* per facing bin b at [176 + 20 L + 4 b], over the square of its radius about the hub: renders, renders with
+             * 4+ pixels of this render's frame, pixels of it, pixels of the other frames' colours */
+            const int32_t rp = (int32_t)(U[93u + 2u * L] >> 16 & 0xFFu);
+            int32_t x0 = (int32_t)sx - rp, x1 = (int32_t)sx + rp, y0 = (int32_t)sy - rp, y1 = (int32_t)sy + rp;
+            if (x0 < 0) x0 = 0;
+            if (y0 < 0) y0 = 0;
+            if (x1 > VP_W - 1) x1 = VP_W - 1;
+            if (y1 > VP_H - 1) y1 = VP_H - 1;
+            uint32_t box[4] = { 0, 0, 0, 0 };
+            for (int32_t y = y0; y <= y1; y++)
+                for (int32_t x = x0; x <= x1; x++) box[spc_cls(px[(uint32_t)y * VP_W + (uint32_t)x])]++;
+            volatile uint32_t *B = U + 176u + 20u * L + 4u * ((U[93u + 2u * L] >> 8) & 7u);
+            B[0]++; if (box[want] >= 4u) B[1]++;
+            B[2] += box[want]; B[3] += box[0] + box[1] + box[2] - box[want];
+        }
+        if (!(U[93u + 2u * L] & 1u)) continue;
+        volatile uint32_t *R = U + 104u + 8u * L;
+        R[0]++;
+        if (cnt[want] >= 5u) {
+            R[1]++;
+            if ((R[5] & 0xFFu) != 0xFFu && (R[5] & 0xFFu) != want) R[4]++;
+            R[5] = want | (U[93u + 2u * L] >> 1 & 1u) << 8;
+        } else if (cnt[0] + cnt[1] + cnt[2] >= 5u) R[2]++;
+        else R[3]++;
+        R[6] = U[92u + 2u * L]; R[7] = px[sy * VP_W + sx];
+    }
+}
+#endif
 static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
 {
     volatile struct gcstate *c = GCAR;
@@ -9427,7 +9606,7 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
 #ifdef A4_ANIMTINT
             /* bench (round 89, the owner: "the wheels don't spin"): the tyres' animated groups (A4_CARANIM's) magenta,
              * untextured -- where the GPU shows them at all */
-            if (me->gm1[k] & 2u) { gl_disable(GL_TEXTURE_2D); gl_color4x(FX, 0, FX, FX); }
+            if (me->gm1[k] & 2u) { gl_disable(GL_TEXTURE_2D); ANIM_COLOUR(me, k); }
             TYRE_GREEN(me, k)
             else { gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX); }
 #endif
@@ -9449,8 +9628,14 @@ static void gcar_flush(volatile struct glr *s, uint32_t *gctx)
             gl_drawarrays(GL_TRIANGLES, 3 * (int)me->gs[k], 3 * (int)me->gc[k]); draws++;
 #endif
         }
+#ifdef A4_ANIMTINT
+        gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX);   /* bench: m1s_pass sets neither (the glass was tinted) */
+#endif
 #ifdef A4_M1SKY
         if (skyd) { m1s_pass(s, me, skyd, base, m1map); lastid = 0xFFFFFFFFu; draws++; }
+#endif
+#ifdef A4_SPINCHECK
+        spc_note(s, it, me, F, cx, cy);
 #endif
     }
 #ifdef A4_CARPROBE
@@ -9771,12 +9956,15 @@ static void cvr_redraw(volatile struct glr *s)
                 if (wsh != lw || hsh != lh) { lw = wsh; lh = hsh; TM[0] = 4096 >> lw; TM[5] = 4096 >> lh; gl_loadmatrixx(TM); }
                 if (id != lastid) { lastid = id; gl_bindtex(GL_TEXTURE_2D, id & 0x0FFFFFFFu); }
 #ifdef A4_ANIMTINT
-                if (me->gm1[k] & 2u) { gl_disable(GL_TEXTURE_2D); gl_color4x(FX, 0, FX, FX); }   /* bench: as gcar_flush's */
+                if (me->gm1[k] & 2u) { gl_disable(GL_TEXTURE_2D); ANIM_COLOUR(me, k); }   /* bench: as gcar_flush's */
                 TYRE_GREEN(me, k)
                 else { gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX); }
 #endif
                 gl_drawarrays(GL_TRIANGLES, 3 * (int)me->gs[k], 3 * (int)me->gc[k]); draws++;
             }
+#ifdef A4_ANIMTINT
+            gl_enable(GL_TEXTURE_2D); gl_color4x(FX, FX, FX, FX);   /* bench: m1s_pass sets neither */
+#endif
 #ifdef A4_M1SKY
             if (skyd) { m1s_pass(s, me, skyd, base, m1map); lastid = 0xFFFFFFFFu; draws++; }
 #endif
@@ -14343,6 +14531,9 @@ void a4_gl_flush(void)
 #ifdef A4_M1SKY
       m1s_capture(s);                                   /* round 88, after r91b: the next frame's reflection, this frame */
 #endif
+#ifdef A4_SPINCHECK
+      spc_read(s);                                      /* bench: the wheels' hubs in the frame just composited */
+#endif
 #ifdef A4_WHEELSHOW
 #ifndef A4_WHEELDESC
 #error "A4_WHEELSHOW reads A4_WHEELDESC's record"
@@ -14352,7 +14543,11 @@ void a4_gl_flush(void)
            * of the tyre's texture holds, in every shot */
           const volatile uint32_t *U = (const volatile uint32_t *)A4_GL_CUT;   /* A4_WHEELDESC's: the car with +1A8 set */
           const uint32_t bb = *(volatile uint32_t *)A4_GL_BB, car = U[0] == 0x31534457u ? U[2] : 0u;
+#ifdef A4_SPINCHECK
+          if (car && bb && GO32(car + 0x1A8u) && !GO32(car + 0x66Cu))   /* with the check: only standing (the start) */
+#else
           if (car && bb && GO32(car + 0x1A8u))
+#endif
               for (uint32_t f = 1; f <= 2u; f++) {
                   const uint32_t d = GO32(car + 0x180u + 4u * f);
                   if (!d) continue;

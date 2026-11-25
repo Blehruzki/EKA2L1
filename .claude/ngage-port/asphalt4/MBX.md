@@ -15402,6 +15402,27 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   only on the 350Z (848), the 599 GTB (818), the Z1000 (1), the ZX-10 R (2), the M3 (2) and the RUF RGT (2); no
   animated face left out and no steered face kept on any. Faults: the boot fault only, in each. (Magenta glass on some
   cars in the sheet: the tint's colour carried into m1s_pass, above.)
+- **The owner** (after the C100 report, before any C100 was sent -- so on r91f): "I checked 599 and both set of wheels
+  don't seem to spin. So make a thorough check on all vehicles to ensure all wheels are spinning". On r91f (C96) that
+  is the twins' picture: the 599's still copies over all four tyres. But the tinted sheets prove only that the
+  animated faces are drawn, not that each wheel's image changes render by render. The check made thorough: the
+  renderer itself, every render, projects each wheel's hub (the animated faces grouped by side and end), and after the
+  composite reads the frame there -- a wheel facing the camera must show its tyre frame's own colour (A4_FRAMETINT:
+  frame 1 magenta, frame 2 violet, frame 0 blue), and the colour must change with the frame (A4_SPINCHECK); C99 the
+  same, for before; each vehicle's two tyre images shown at the start (A4_WHEELSHOW at a standstill).
+- **A4_SPINCHECK, getting it to measure.** (1) The first run read only the start-line capture: captures come every
+  TEL_EVERY = 230 3D renders and the bench renders ~5 a second, ~200 in the whole drive, so none fell after the
+  steering (the two later ring files empty at the kill). The check builds capture every 40 (-UTEL_EVERY
+  -DTEL_EVERY=40), the drive runs 10 s past the steering, and the record carries the mesh's faces / vertices (1,692 /
+  918: the 599). (2) The hub test (facing within ~75 degrees) passed 3 renders in 430: the chase camera shows the
+  sides at cos 0-0.3 only. Every on-screen wheel is now binned by facing (cos' = n . -v / max|v|: < 0, 0-.1, .1-.2,
+  .2-.3, > .3) and, per render, the pixels over the square of its projected radius about the hub are counted -- this
+  render's frame colour and the other frames' colours. sp100_21 (C100, the 599; 430 renders read, the frame changed
+  in 258): each wheel shows its frame -- the rear wheels in 5/5 and 6/6 renders at .2-.3 (472 and 338 pixels), 21/21
+  at .1-.2 on the -x side; the front 17/17 and 6/30 at .1-.2 (fewer and fewer pixels as the view grazes: the body and
+  the steered disc's own turn); **no pixel of another frame's colour on any wheel in any render** (no stale image).
+  Shots: wheels violet / magenta both sides moving, blue standing; WHEELSHOW at a stop shows the 599's two tyre
+  images, a star rim at two angles.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
