@@ -15432,6 +15432,18 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   Veyron: no twins, C100 leaves it as it is) -- +x 11/33 92 px, 8/32 51 px; -x 34/34 253 px, 32/32 271 px: the +x side's
   lower share is the drive's camera (it meets that side at grazing angles), not the cars. No pixel of another frame's
   colour on any wheel of any run. The frame changed in 140-279 of 400-450 renders read (every render while moving).
+- **All 28 on C100** (spq.sh / spv.py; sc100.exe = C100 + A4_WHEELDESC + A4_WHEELSHOW + A4_ANIMTINT + A4_FRAMETINT +
+  A4_SPINCHECK, TEL_EVERY 40; LA, '5' 25 s, 8 and 2 held 6 s each twice, 10 s more; one run each, the boot fault
+  only): **every wheel of every car shows the render's own tyre frame whenever it faces the camera squarely (cos' >=
+  .2: 100% in every wheel that met such a view, 1-23 renders each)**; at .1-.2 the -x side 100% on every car, the +x
+  side 20-60% (the drive's grazing views of that side, as on the untouched Veyron under C99). Rear wheels' mean 67-320
+  pixels of the frame, fronts 26-197. Frame changed in 200-294 of 398-526 renders read. "Other frame" pixels only on
+  the blue cars (F430 Scuderia's paint in the frame-0 class: 1,043 such pixels in its shots) and 30 on the DB9 (< 1 a
+  render). Bikes: ZX-10 R and Ducati 1098 both wheels both sides; Monster 696 its animated faces only on +x (the
+  model's: +1B084's 40 faces all face +x, so the game spins its wheels only on that side too; C100 leaves none of its
+  faces out -- as r91f), the rear disc seen edge-on behind the exhaust from the chase camera (49/109, 27 px), the
+  whole disc violet in a crash; Z1000 crashed early and stood (frame 0, blue, in most shots: 72 frame changes) --
+  run again. Before (C99): the 599's rear wheels 0/34 at >= .1 and 0/13 at >= .2, the 350Z's 2-3 pixels.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
