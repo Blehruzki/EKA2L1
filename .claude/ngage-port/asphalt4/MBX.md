@@ -15456,6 +15456,9 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   r91f: A4_CARDEFORM (the bikes' rider), A4_BBREDRAWFIRST (the brake-light shadow), A4_CARTWIN (the 350Z / 599 GTB
   wheels and second copy). For the phone: every wheel spinning on the 350Z and 599 GTB, front and rear; the Z1000's
   tank no longer over the rider; no dark patch at the tail lights braking.
+- **The owner on r91g**: "tested.. all good except for the z1000. it suffers from the same shadows issue and the
+  braking light doesn't work" -- the wheels, the 350Z / 599 and the other vehicles good; the Z1000 still with the dark
+  patch braking (the r91f brake-light shadow), and its brake light not lighting.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
