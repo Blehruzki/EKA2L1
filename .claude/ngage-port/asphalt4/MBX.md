@@ -15505,6 +15505,17 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
 - C101 untinted, brake.sh: bk_101_12 (the Z1000) -- the tail lamp glows red from the first shot of every brake, upright
   and leaning, the slab gone; bk_101_6 (the Monster) and bk_101_2 (the 350Z) -- as before (the Monster's tail glow, the
   350Z's lamps, no dark patch). Faults: the boot fault only.
+- **The owner: yes to the battery on C101, then the unbaked exe (r91h).** bat101 on a4_r91h_cand.exe (C101, sha256
+  fb7c27f7a7b7d531..., 1,029,432 bytes; its first start aborted at once on a stale X lock left by a container restart,
+  then ran from the top): **at101 (six maps 45 s) 5,544; m101 (Instant Play 300 s, 7 marks) 2,325; pa101 (Paris 400
+  s) 3,400; rv101 (the Mini reversing) 2,065; the boot fault only in each.** Against r91f's bat96c (5,704 / 2,436 /
+  3,619 / 2,023): -2.8%, -4.6%, -6.0%, +2.1%. **The telemetry says it is not noise** (over every capture, per render):
+  the 3D pass at96 11.5 -> at101 12.6 ms, m96 10.9 -> 13.3, pa96 14.5 -> 16.5, while our hook's part of it fell (10.5
+  -> 9.6, 9.9 -> 7.3, 12.0 -> 8.3): **the game's own 3D work outside our hook 1.0 -> 3.0, 0.9 -> 6.0, 2.4 -> 8.2 ms**
+  -- meshes the game draws in software that r91f drew on the GPU. Suspect: A4_CARDEFORM (C99, in r91g too): a mesh
+  whose hash differs from its bake's is handed to the game at that take, and nothing re-bakes it, so a car mesh moved
+  for good (a crash's dent, say) would stay on the game's draw for the rest of the race. Next: A4_CARDEFORMCEN on
+  Paris (cdc101.exe = C101 + it, f4db1ffe...).
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
