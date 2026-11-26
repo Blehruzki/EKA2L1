@@ -193,3 +193,9 @@ tyre faces coloured by the frame -- 1 magenta, 2 violet, 0 blue; the reflection 
 (with A4_FRAMETINT: each wheel's hub projected at the car draw and its square read after the composite -- CUT1's place
 from [90], 'SPC1' at [100]; build with `-UTEL_EVERY -DTEL_EVERY=40` so a capture falls after a bench drive; readers
 spc.py / spv.py in the scratchpad).
+
+C101.flags = C100.flags with `-DA4_LAMPFIX` (round 89, the owner on r91g: the Z1000's brake light): the Z1000's model
+(carsb.bar Cars\Z1k.obj) lists no lamp vertices, so the six lamp words at car+80 are all vertex 0 and its brake glow
+sat inside the bike; a car whose six are 0 and whose mesh is the Z1000's (516 vertices, 810 faces, four vertices where
+its file has them) is given 359 359 388 436 388 436 (head lamp, tail lamp). Scratch as C100. sha256 fb7c27f7a7b7d531...,
+1,029,432 bytes. Bench only: `-DA4_LAMPSCAN` (CUT1's place 'LMP1': the player's car object scanned for its lamp words).

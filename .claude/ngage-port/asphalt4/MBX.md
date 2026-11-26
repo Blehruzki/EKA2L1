@@ -15502,6 +15502,9 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   on the tail). bk_lf_12 (C100 + it + A4_LAMPSCAN, brake.sh on the Z1000): **braking, a red glow on the tail lamp**, upright
   and leaning, as the 1098's, the ZX-10 R's and the Monster's; no slab beside the wheel. C101 = C100 + -DA4_LAMPFIX
   (flags/C101.flags; scratch 0x1C3000): sha256 fb7c27f7a7b7d531..., 1,029,432 bytes; C100 still 78c79060.
+- C101 untinted, brake.sh: bk_101_12 (the Z1000) -- the tail lamp glows red from the first shot of every brake, upright
+  and leaning, the slab gone; bk_101_6 (the Monster) and bk_101_2 (the 350Z) -- as before (the Monster's tail glow, the
+  350Z's lamps, no dark patch). Faults: the boot fault only.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
