@@ -15470,6 +15470,38 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   One bench / phone difference that could matter: the emulator gives the game a D24S8 depth buffer (egl.cpp
   EGL_DEPTH_SIZE 24), the MBX its own on-chip depth -- the glow sits at nearly the tail's depth. A lead, not shown.
   Asked the owner for a video of the Z1000 braking on r91g.
+- **The owner**, on the picture sent (stock above, r91g below, braking leaning): "those screenshots you're sending,
+  those are showing the issue" -- the pink-red rectangle at the bike's right rear is the fault (the "shadow"), and the
+  tail lamp not lit is the "brake light doesn't work". It is in the stock rows too: the game's own brake-light sprite
+  for the Z1000, not the GPU path alone.
+- **The other bikes, stock** (brake.sh; bk_st_27 the Ducati 1098, bk_st_20 the ZX-10 R): braking upright, **a big red
+  glow centred on the tail lamp** from the first shot of the brake on; leaning, the same glow on the tail. The Z1000
+  in stock: none at the tail upright, only a pink slab beside the rear wheel leaning. So the Z1000's brake-light
+  sprite is placed wrong -- inside or behind the bike, the body covering all but an edge -- in the game itself, not
+  the GPU path: the fix is where the game takes the Z1000's lamp position.
+- bk_st_6 (the Monster 696, stock): its glow on the tail as the 1098's and the ZX-10 R's -- though its .cfg matches
+  the Z1000's in the fields that differ from those two (18, 368, 36, 46 against 18, 272, 44, 57): not the .cfg.
+- **The cause: the Z1000's model has no lamp vertices.** carsb.bar Cars\<car>.obj (tools/bar.py get): u16 vertices,
+  u16 faces, the vertices (3 x int16), the faces (10 bytes), then **a byte count and that many u16 vertex indices --
+  the lamps**: every car lists its head lamps (z -86..-112), tail lamps (z +91..+117) and some a third pair; the bikes
+  a head lamp (Ducati 1098 348/347 at (+-6, 43, -38), Monster 426/425 at (0, 41, -38), ZX-10 R 27 at (0, 40, -47)) and
+  a tail lamp (1098 349/350 (0, 51, 47), Monster 428/427 (0, 45, 41), ZX-10 R 28 (0, 49, 53)). **Cars\Z1k.obj ends
+  in a count of 0** (2 bytes after its 810 faces): the game's data, in every install. The brake glow is placed from
+  nothing -- inside the bike, shown only as an edge beside the wheel when it leans.
+- **Where the game keeps them** (A4_LAMPSCAN, bench: once a race, the player's car object and mesh scanned for
+  pointers to the mesh's vertices, the 1098's lamp values, lamp coordinates; 'LMP1' in CUT1's place): lm_27 (the 1098)
+  -- **car+80..94: 348 347 349 350 351 351**, the .obj list as six words; lm_12 (the Z1000) -- car+80..94 all 0: every
+  lamp is vertex 0, (4, 14, -38), low by the front wheel. The mesh object [car+108]: +4 the vertices, **+8 their count
+  (516), +10 the faces' (810)**. A read watch over car+80..98 (and car+1B70.., a block with lamp values on the 1098 only,
+  other data) saw no game read in a race -- the reads come by a path the watch does not see (LDM); the patch says the
+  game does read them.
+- **Fix, A4_LAMPFIX** (a4_gl.c, in a4_car_anim -- every car, every render): a car whose six lamp words are 0 and whose
+  mesh is the Z1000's (mesh+8 516, mesh+10 810; vertices 0, 359, 388, 436 where Cars\Z1k.obj has them) is given its
+  lamps: 359 359 388 436 388 436 -- the head lamp (0, 38, -35), the front-most centre-line vertex at lamp height, and
+  the tail lamp (0, 42, 49), the rear-most; the pairs as the Monster's (one vertex twice) and the 1098's (the third pair
+  on the tail). bk_lf_12 (C100 + it + A4_LAMPSCAN, brake.sh on the Z1000): **braking, a red glow on the tail lamp**, upright
+  and leaning, as the 1098's, the ZX-10 R's and the Monster's; no slab beside the wheel. C101 = C100 + -DA4_LAMPFIX
+  (flags/C101.flags; scratch 0x1C3000): sha256 fb7c27f7a7b7d531..., 1,029,432 bytes; C100 still 78c79060.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The

@@ -6341,7 +6341,7 @@ static int lean_tail(volatile struct glr *s, uint32_t *gctx, const uint32_t *des
             if (0)     /* bench (round 83): the census owns CUT1's place */
 #endif
 #if defined(A4_CARPROBE2) || defined(A4_FLUSHPROBE) || defined(A4_WHEELCEN) || defined(A4_WHEELDESC) || defined(A4_CARMESHLOG) \
-    || defined(A4_TYREMAP) || defined(A4_TWINCEN)
+    || defined(A4_TYREMAP) || defined(A4_TWINCEN) || defined(A4_LAMPSCAN)
             if (0)     /* bench (round 84): the car probe owns CUT1's place */
 #endif
             {   /* 'CUT1': this cut's raw corners, the last CUT_N kept -- a mark at a gap shows what was cut in its frame */
@@ -8027,6 +8027,71 @@ void a4_car_anim(uint32_t car)
 {
     volatile struct gcanim *A = GCANIM;
     if (A->magic != GCANIM_MAGIC) { A->mi = 0; A->refreshed = A->refused = A->rebakes = 0; A->magic = GCANIM_MAGIC; }
+#ifdef A4_LAMPFIX
+    {   /* Round 89 (the owner: the Z1000 "suffers from the same shadows issue and the braking light doesn't work"). A
+         * car's lamp vertices are the six words at car+80 (the .obj's trailing list: head lamps, tail lamps, a third
+         * pair -- the Ducati 1098's 348 347 349 350 351 351). The Z1000's .obj ends with an empty list (carsb.bar
+         * Cars\Z1k.obj), so all six are vertex 0 -- low inside the bike by the front wheel: its brake glow drawn
+         * there, hidden by the bike but for an edge beside the wheel as it leans. Given its own: the head lamp 359
+         * (0, 38, -35), the tail lamp 388 / 436 (0, 42, 49), as the other bikes' lists place them. The game reads the
+         * six every render (patched at the start, the brake glow sits on the tail: bk_lf_12). Only a car whose six
+         * are zero and whose mesh is the Z1000's (mesh+8 516 vertices, mesh+10 810 faces; 0, 359, 388, 436 where its
+         * file has them) -- the player's or an opponent's; every other model lists its own lamps. */
+        const uint32_t mesh = GO32(car + 0x108u), verts = mesh ? GO32(mesh + 4u) : 0u;
+        uint32_t zero = verts != 0u;
+        for (uint32_t k = 0; k < 6u && zero; k++) if (GO32(car + 0x80u + 4u * k)) zero = 0;
+        if (zero && GO32(mesh + 8u) == 516u && GO32(mesh + 0x10u) == 810u) {   /* the mesh's vertices, faces */
+#define LFV(i, x, y, z) ((int32_t)GO32(verts + 40u * (i) + 0x18u) == (x) && (int32_t)GO32(verts + 40u * (i) + 0x1Cu) == (y) \
+                         && (int32_t)GO32(verts + 40u * (i) + 0x20u) == (z))
+            if (LFV(0u, 4, 14, -38) && LFV(359u, 0, 38, -35) && LFV(388u, 0, 42, 49) && LFV(436u, 0, 42, 49)) {
+                static const uint16_t lamps[6] = { 359u, 359u, 388u, 436u, 388u, 436u };
+                for (uint32_t k = 0; k < 6u; k++) *(volatile uint32_t *)(uintptr_t)(car + 0x80u + 4u * k) = lamps[k];
+            }
+#undef LFV
+        }
+    }
+#endif
+#ifdef A4_LAMPSCAN
+    if (GO32(car + 0x1A8u)) {
+        /* bench (round 89, the owner: the Z1000's brake light): where the game keeps a car's lamp vertices (the .obj's
+         * trailing list -- none in the Z1000's). 'LMP1' in CUT1's place, once a race for the player's car: [1] the car,
+         * [2] its mesh [car+108], [3] the vertices, [4] their count; from [8], up to 40 finds, 2 words each: where (0
+         * the car, 1 the mesh object) << 28 | offset, then what -- a pointer to vertex i (1 << 28 | i), a word or a
+         * halfword pair equal to a lamp index of the Ducati 1098 (347..351: 2 << 28 | value), three int32 equal to a
+         * lamp vertex's x y z (3 << 28 | vertex) */
+        volatile uint32_t *U = (volatile uint32_t *)A4_GL_CUT;
+        const uint32_t mesh = GO32(car + 0x108u), verts = mesh ? GO32(mesh + 4u) : 0u;
+        if (verts && (U[0] != 0x31504D4Cu || U[1] != car)) {
+            for (uint32_t k = 1; k < 96u; k++) U[k] = 0;
+            U[0] = 0x31504D4Cu; U[1] = car; U[2] = mesh; U[3] = verts;
+            uint32_t nv = 0;                                 /* the mesh's vertex count: the baked one, else 2,048 */
+            for (uint32_t i = 0; i < GCAR_NM; i++) if (GCMESH[i].verts == verts) nv = GCMESH[i].nv;
+            if (!nv) nv = 2048u;
+            U[4] = nv;
+            uint32_t n = 0;
+            for (uint32_t w = 0; w < 2u; w++) {
+                const uint32_t base = w ? mesh : car, len = w ? 0x200u : 0x2000u;
+                for (uint32_t o = 0; o + 4u <= len && n < 40u; o += 4u) {
+                    const uint32_t v = GO32(base + o);
+                    uint32_t what = 0;
+                    if (v >= verts && v < verts + 40u * nv && (v - verts) % 40u == 0u) what = 1u << 28 | (v - verts) / 40u;
+                    else if ((v >= 347u && v <= 351u) || ((v & 0xFFFFu) >= 347u && (v & 0xFFFFu) <= 351u && (v >> 16) >= 347u && (v >> 16) <= 351u))
+                        what = 2u << 28 | (v & 0x0FFFFFFFu);
+                    else if (o + 12u <= len) {
+                        for (uint32_t li = 347u; li <= 351u && !what; li++)
+                            if (li < nv && (int32_t)v == (int32_t)GO32(verts + 40u * li + 0x18u) && GO32(base + o + 4u) == GO32(verts + 40u * li + 0x1Cu)
+                                && GO32(base + o + 8u) == GO32(verts + 40u * li + 0x20u)) what = 3u << 28 | li;
+                    }
+                    if (what) { U[8u + 2u * n] = w << 28 | o; U[9u + 2u * n] = what; n++; }
+                }
+            }
+            U[5] = n;
+            for (uint32_t k = 0; k < 8u; k++) U[100u + k] = GO32(car + 0x80u + 4u * k);        /* raw: car+80..9C */
+            for (uint32_t k = 0; k < 24u; k++) U[108u + k] = GO32(car + 0x1B70u + 4u * k);     /* raw: car+1B70..1BCC */
+            for (uint32_t k = 0; k < 16u; k++) U[132u + k] = GO32(mesh + 4u * k);              /* raw: the mesh's head */
+        }
+    }
+#endif
 #ifdef A4_SPINCEN
     {
 #ifdef A4_WHEELDESC
