@@ -15520,6 +15520,17 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   20 meshes baked; framestat 3,527 (pa101 3,400 on the same build without the census -- the spread between two runs of
   one build is ~4%). **A4_CARDEFORM is not it.** Next: pf101 (C101 + A4_PROFSEG 0..4095, pf96's drive and gate: Instant
   Play 240 s, 1.5e9 skipped, 3e9 cycles credited) against pf96 (C96), function by function.
+- **pf101 against pf96** (profall.py, 400 rows each; both gates at 0x700BA62C / 0x700BA640; 3e9 instructions credited
+  in each, 7.57e9 / 7.49e9 modelled cycles): **gcd_hash (A4_CARDEFORM's hash at every take) 1.97% of the frame**, new;
+  cvr_redraw 0.42 -> 0.65% (A4_BBREDRAWFIRST's earlier redraws); the game's +35FDA 0.46 -> 0.90%; nothing else of ours
+  up by more than 0.04 points. The present's convert 15.97 -> 18.62% and the per-render routines a little down
+  (a4_comp_row 11.14 -> 10.98, a4_gl_flush 5.68 -> 5.37): the window held more presents per render than pf96's -- a
+  session difference (pa96's present phase 0.4 ms, m96's 2.7, the same build), not the build's. **So C99-C101 cost ~2.2
+  points of the frame, nine tenths of it the hash**; the rest of bat101's gap is the spread between runs. The hash
+  is ~15 instructions a vertex, so at ~2,000-2,500 vertices a render its 2% is mostly memory: each vertex a 40-byte
+  record, its x y z one cache line, the cars' ~100 KB of vertices against a 32 KB data cache (EKA2L1_CPUMODEL's miss).
+  The census found only the bikes' 170-vertex rider meshes ever moving (every car 0 of 1,225-3,515 takes, all 28;
+  0 of 14,095 in Paris). In r91g as well (C99's), so r91h is no slower than the build the owner has.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
