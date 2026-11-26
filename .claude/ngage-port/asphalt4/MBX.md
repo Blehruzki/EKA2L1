@@ -15531,6 +15531,10 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   record, its x y z one cache line, the cars' ~100 KB of vertices against a 32 KB data cache (EKA2L1_CPUMODEL's miss).
   The census found only the bikes' 170-vertex rider meshes ever moving (every car 0 of 1,225-3,515 takes, all 28;
   0 of 14,095 in Paris). In r91g as well (C99's), so r91h is no slower than the build the owner has.
+- **Sent: r91h** = a4_r91h_cand.exe (C101), unbaked, sha256 fb7c27f7a7b7d53128946e8cbd0fe52dc77858e5b3bff938fd52f2bc7532bb79,
+  1,029,432 bytes. To look at on the phone: the Z1000 braking (the tail lamp red, no slab beside the wheel), its head
+  lamp at night (vertex 359, not seen on the bench), the other 27 vehicles as r91g. Next on the bench: the hash's cost
+  (only the riders move; a cheaper test that still sees every move).
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
