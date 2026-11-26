@@ -15516,6 +15516,10 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   whose hash differs from its bake's is handed to the game at that take, and nothing re-bakes it, so a car mesh moved
   for good (a crash's dent, say) would stay on the game's draw for the rest of the race. Next: A4_CARDEFORMCEN on
   Paris (cdc101.exe = C101 + it, f4db1ffe...).
+- **pc101 (cdc101.exe, Paris 400 s as pa101; reader py/cdc.py): 0 moved of 14,095 car-mesh takes** in the whole race,
+  20 meshes baked; framestat 3,527 (pa101 3,400 on the same build without the census -- the spread between two runs of
+  one build is ~4%). **A4_CARDEFORM is not it.** Next: pf101 (C101 + A4_PROFSEG 0..4095, pf96's drive and gate: Instant
+  Play 240 s, 1.5e9 skipped, 3e9 cycles credited) against pf96 (C96), function by function.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
