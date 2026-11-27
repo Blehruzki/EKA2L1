@@ -5308,7 +5308,13 @@ static inline PROF_NI void tri_conv(uint32_t kind, int wsh, int hsh, int32_t x0,
 #ifndef A4_SHADZSH
 #define A4_SHADZSH 6    /* round 89 (bench): the shadow's nudge, ZK >> this (6: 1/64, every build before) */
 #endif
+#ifdef A4_SHADZFAR
+        /* round 89 (A4_SHADZFAR): wsh, which a shadow never uses (no texture: every other caller passes 0), set by
+         * shf_rec for a face only GPU objects cover, away from every car: the larger nudge, ZK >> A4_SHADZFAR */
+        int32_t zk = kind == KIND_SHAD ? ZK + (ZK >> (wsh ? A4_SHADZFAR : A4_SHADZSH)) : ZK;
+#else
         int32_t zk = kind == KIND_SHAD ? ZK + (ZK >> A4_SHADZSH) : ZK;
+#endif
         zq = shift >= 0 ? (zk << shift) : (zk >> -shift);
     }
 #endif
@@ -10214,6 +10220,10 @@ void a4_shadow_insert(uint32_t *cam, uint32_t *face)
     || defined(A4_DEDUPCEN) || defined(A4_M1WHERE))
 #error "A4_SHADFASTCHECK checks A4_SHADFAST and counts in CRK1 [40..43]"
 #endif
+#if defined(A4_SHADZFAR) && (!defined(A4_SHADFAST) || defined(A4_SHADFASTCHECK) || !defined(A4_COVREDRAW) || (A4_SHADZFAR) < 1 \
+    || (A4_SHADZFAR) >= (A4_SHADZSH))
+#error "A4_SHADZFAR: A4_SHADFAST's records (not its check, which compares them with the per-face path's), a nudge above A4_SHADZSH's"
+#endif
 #ifdef A4_SHADFAST
 /* Round 88 (phone r87a: the shadow's draws 4.9 ms a render for ~290 faces; round 86's profile: the generic per-face path,
  * no hot spot). A shadow face from the list straight to its batch record, as lean_tail_cv(s, gctx, face, KIND_SHAD, 0,
@@ -10255,12 +10265,40 @@ static PROF_NI void shf_rec(const struct shbf *f, int32_t *pos, int32_t *uv, uin
     yr[0] = ylo < 0 ? 0 : ylo >= VP_H ? VP_H - 1 : ylo;
     yr[1] = yhi < 0 ? 0 : yhi >= VP_H ? VP_H - 1 : yhi;
     *idp = KIND_SHAD << 28;
+#ifdef A4_SHADZFAR
+    /* Round 89 (the owner's r91h photos: the Z1000's shadow in pieces, the road showing through; zp101 against zpst,
+     * zp96 the same). A face only GPU items cover is drawn over everything with its own depth and the items drawn
+     * again over it (round 78); where the road under it is a GPU object standing above the shadow's plane by more
+     * than the 1/64 nudge -- a road curving or banking away from the vehicle, a long shadow under a low light, a
+     * bike's shadow tilted with its lean -- the road's redraw lands on it, which the game's order never does. Such a
+     * face, its box meeting no car the bucket's candidates hold (a car that may cover it keeps the 1/64 rule, so its
+     * own lower edges are judged as before), takes the larger nudge (zpz3: the holes gone at 1/8). */
+    int32_t b = 0;
+    int cv = 0, far = 0;
+    if (MESH_ON()) {
+        int32_t key = za > zb ? za : zb;
+        if (zc > key) key = zc;
+        b = key >> 3;
+        cv = shf_covered(b, xlo, ylo, xhi, yhi);
+        if (cv == 2) {
+            const struct shb *h = SHB;
+            far = 1;
+            for (uint32_t k = 0; k < h->ncc && far; k++) {
+                const volatile struct gcitem *it = &GCAR->it[h->cc[k]];
+                if (!(it->box[2] < xlo || it->box[0] > xhi || it->box[3] < ylo || it->box[1] > yhi)) far = 0;
+            }
+        }
+    }
+    tri_conv(KIND_SHAD, far, 0, x0, y0, x1, y1, x2, y2, za, zb, zc, z6, xlo, xhi, ylo, yhi, pos, uv, 0);
+    if (MESH_ON()) {
+#else
     tri_conv(KIND_SHAD, 0, 0, x0, y0, x1, y1, x2, y2, za, zb, zc, z6, xlo, xhi, ylo, yhi, pos, uv, 0);
     if (MESH_ON()) {
         int32_t key = za > zb ? za : zb;
         if (zc > key) key = zc;
         const int32_t b = key >> 3;
         const int cv = shf_covered(b, xlo, ylo, xhi, yhi);
+#endif
         if (cv == 2) {                              /* a shadow only GPU items cover: its own depth, written; they again */
             *idp |= CVR_FLAG;
             if (dry) *addp = 1;

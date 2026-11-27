@@ -15568,6 +15568,19 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   light -- the road's redraw lands over it. The nudge is now a bench knob, A4_SHADZSH (default 6; C101 rebuilds to
   fb7c27f7). Next (shzq.sh): zpz4 / zpz3 / zpz2 -- C101 with 1/16, 1/8, 1/4 -- holes, and the bike's own lower edge
   (a real cover within the nudge would lose to the shadow).
+- **shzq** (framestat 2,738 / 2,868 / 2,860, the boot fault only in each; up91h/zpz_cmp.png, the embankment at
+  ~140-150 s): **zpz3 (1/8) and zpz2 (1/4): the shadow one solid silhouette, as stock's**; the bike's tyre and lower
+  edge as C101's. zpz4 (1/16) took another line and never reached the embankment in its shots -- not judged. A
+  uniform 1/8 would also reach the cars: a surface within ~14% of w in front of a shadow loses to it (at w ~250 and
+  the chase camera's angle, roughly the lowest 15-20 cm), and a low car's sills over its own shadow are about that.
+- **The fix, A4_SHADZFAR** (a4_gl.c, shf_rec / tri_conv; bench flag for now): the larger nudge (ZK >> A4_SHADZFAR)
+  only for a shadow face only GPU items cover (shf_covered 2, round 78's case) whose box meets none of the bucket's
+  car candidates (shb_cand's cc: the GPU cars nearer than the bucket whose box meets it); a face a car may cover keeps
+  1/64, so cars' own edges are judged exactly as before. The flag rides tri_conv's wsh, which a shadow never uses
+  (tri_tex gives KIND_SHAD sizes 0; the deferred replay passes 0 for it). #error without A4_SHADFAST / A4_COVREDRAW,
+  with A4_SHADFASTCHECK, or at or below A4_SHADZSH. szf3.exe = C101 + -DA4_SHADZFAR=3: 8e46cee60bad67ec, 1,029,800
+  bytes. **C90-C101 rebuild to their bytes** with the code in the tree (C101 fb7c27f7, C100 78c79060, C96 47a0f91a).
+  Next (zfq.sh): zf3 (the Z1000, the same drive), c350_101 / c350_f3 (the 350Z, C101 and szf3).
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
