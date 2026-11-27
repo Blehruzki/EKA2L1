@@ -10224,6 +10224,11 @@ void a4_shadow_insert(uint32_t *cam, uint32_t *face)
     || (A4_SHADZFAR) >= (A4_SHADZSH))
 #error "A4_SHADZFAR: A4_SHADFAST's records (not its check, which compares them with the per-face path's), a nudge above A4_SHADZSH's"
 #endif
+#if defined(A4_SHADZCEN) && (!defined(A4_SHADZFAR) || defined(A4_CARDEFORMCEN) || defined(A4_SPINCEN) || defined(A4_WHEELCEN) \
+    || defined(A4_SHADPROBE) || defined(A4_SHADCOUNT) || defined(A4_SHADCHECK) || defined(A4_CARPROBE) || defined(A4_COPYCEN) \
+    || defined(A4_DEFERCEN) || defined(A4_DEDUPCEN) || defined(A4_BLDEFER) || defined(A4_NGWHY) || defined(A4_BLENDCEN))
+#error "A4_SHADZCEN counts A4_SHADZFAR's cases in CRK1 [40..47], the benches' censuses' words"
+#endif
 #ifdef A4_SHADFAST
 /* Round 88 (phone r87a: the shadow's draws 4.9 ms a render for ~290 faces; round 86's profile: the generic per-face path,
  * no hot spot). A shadow face from the list straight to its batch record, as lean_tail_cv(s, gctx, face, KIND_SHAD, 0,
@@ -10289,6 +10294,21 @@ static PROF_NI void shf_rec(const struct shbf *f, int32_t *pos, int32_t *uv, uin
             }
         }
     }
+#ifdef A4_SHADZCEN
+    /* round 89 (phone ride-along, the owner's tunnel photos: the shadow's part by the bike gone on the MBX, whole on
+     * the bench): which rule each shadow face took -- CRK1 [40] faces, [41] only GPU items cover and no car (1/8),
+     * [42] only GPU items cover, a car near (1/64), [43] a nearer list face (tested, 1/64), [44] none (untested, or
+     * flagged over pending items); [45] the render [46] [47] count: [46] far | near << 16, [47] list | none << 16 */
+    if (!dry) {
+        volatile uint32_t *C = crk_get();
+        const uint32_t fr = ((volatile struct glr *)A4_GL_SCRATCH)->frames;
+        if (C[45] != fr) { C[45] = fr; C[46] = 0; C[47] = 0; }
+        C[40]++;
+        if (cv == 2) { if (far) { C[41]++; C[46] += 1u; } else { C[42]++; C[46] += 1u << 16; } }
+        else if (cv == 1) { C[43]++; C[47] += 1u; }
+        else { C[44]++; C[47] += 1u << 16; }
+    }
+#endif
     tri_conv(KIND_SHAD, far, 0, x0, y0, x1, y1, x2, y2, za, zb, zc, z6, xlo, xhi, ylo, yhi, pos, uv, 0);
     if (MESH_ON()) {
 #else

@@ -15599,6 +15599,14 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   passes it: on the phone the part by the bike loses too. That part lies inside the bike's box, where C102 keeps the
   1/64 nudge -- so C102 may leave the tunnel case on the phone as it is. Not known from the bench: what margin the
   MBX needs, and which rule (round 78's, a nearer list face's, untested) those faces take on the phone.
+- **The owner: "go with recommended"** -- r91i = C102 with a ride-along census (option 1 of three: C102 as it is; the
+  larger nudge by the bike too, untested against low cars). **A4_SHADZCEN** (a4_gl.c, shf_rec): CRK1 [40] shadow
+  faces, [41] far (only GPU items, no car: 1/8), [42] near a car (1/64), [43] under a nearer list face (tested),
+  [44] none; [45] a render, [46] its far | near << 16, [47] list | none << 16. Nothing drawn differently. [40..47]
+  are the bench censuses' words, none in the phone build (C102's flags run through the preprocessor: only the
+  census writes them); #error beside A4_SHADZFAR against the censuses most often combined. **C103 = C102 +
+  -DA4_SHADZCEN**: 6f79622e3c867418..., 1,030,244 bytes; C102 still 8e46cee6. bat102 stopped again (its first run).
+  Next: tn103 (C103 through the tunnel, C marks at 60, 120, 165, 170 s; py/szc.py), then bat103.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The

@@ -205,3 +205,10 @@ of five): a shadow face only GPU items cover (round 78's rule: drawn over everyt
 drawn again over it) whose box meets none of its bucket's car candidates is nudged ZK >> 3 (1/8) nearer instead of
 1/64, so a GPU road standing above the shadow's plane no longer lands over it; a face a car may cover keeps 1/64.
 Scratch as C101. sha256 8e46cee60bad67ec..., 1,029,800 bytes. Bench only: `-DA4_SHADZSH=n` (the 1/64 nudge's shift).
+
+C103.flags = C102.flags with `-DA4_SHADZCEN` (round 89, the owner: "go with recommended" -- r91i with a ride-along
+census): which rule each shadow face took, in CRK1 [40..47] -- [40] faces, [41] only GPU items cover and no car (the
+1/8 nudge), [42] only GPU items cover with a car near (1/64), [43] a nearer list face (tested), [44] none (untested or
+flagged over pending items); [45] a render and its counts in [46] (far | near << 16) and [47] (list | none << 16).
+Nothing drawn differently. Reader: py/szc.py in the scratchpad. Scratch as C102. sha256 6f79622e3c867418...,
+1,030,244 bytes.
