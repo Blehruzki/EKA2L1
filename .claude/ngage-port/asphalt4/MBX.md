@@ -15557,6 +15557,17 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   again over it (cover redraw, GEQUAL); where the road under it is a GPU object, the two are coplanar and the redraw
   wins about half the pixels -- the holes; the game's table puts the shadow over the road by order, no depth. Next:
   zp96 (C96, r91f's bytes, the same drive) -- new in C99-C101, or there since the shadow went to the GPU.
+- **zp96 (c96r.exe = r91f's bytes, the same drive; framestat 2,890, the boot fault only): the same** -- on the
+  embankment (up91h/zp96_cmp.png, 126-132 s) only a faint piece of shadow beside the rear wheel where stock lays the
+  long silhouette. **Not C99-C101's: there since the shadow went to the GPU**; the owner saw it on the Z1000 first.
+  Where it comes from, in the code: round 78's rule (A4_COVREDRAW) draws a shadow face that only GPU items cover
+  passing every test and writing its own depth, then draws those items again with GEQUAL; the shadow's depth is
+  nudged ZK >> 6 (1/64) nearer (tri_conv; ZK 128, so 130 against the list's 128 and the GPU objects' 126). Where the
+  road the shadow lies on is a GPU object and its surface stands above the shadow's plane by more than that nudge --
+  a road that curves or banks away from the bike, a shadow mesh tilted with the bike's lean, a long shadow under a low
+  light -- the road's redraw lands over it. The nudge is now a bench knob, A4_SHADZSH (default 6; C101 rebuilds to
+  fb7c27f7). Next (shzq.sh): zpz4 / zpz3 / zpz2 -- C101 with 1/16, 1/8, 1/4 -- holes, and the bike's own lower edge
+  (a real cover within the nudge would lose to the shadow).
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
