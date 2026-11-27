@@ -15547,6 +15547,16 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   captures: 58-59 ms a render over 2,760-4,166 renders (3D 21.4, hook 13.4-13.8, composite 10.5, draw 6.0), 3% of
   render gaps >= 90 ms. Next: the Z1000 in Paris on C101 and on stock, the same drive, a shot a second, to see whose
   the shadow's placement is.
+- **Reproduced on the bench** (z1kpa.sh: the Z1000 in career Paris at night, '5' held 150 s, a full-size shot a second;
+  alltracks_1s.sh; zp101 = a4_r91h_cand.exe, framestat 2,844; zpst = stock, 1,806; the boot fault only in each; both
+  reach THE BANKS, the embankment of the owner's last three photos, at ~110-150 s). up91h/emb_cmp.png: **stock's
+  shadow is one solid silhouette** from the rear wheel out to the left; **C101's has the same outline but is full of
+  holes** -- dark patches with the road showing through between them, as in the photos. Its placement is the game's;
+  what differs is which of its pixels are drawn. On the straight at the start (the road the game draws itself) the two
+  agree. The reading: a shadow face only GPU items cover (shf_covered 2) writes its own depth and the items are drawn
+  again over it (cover redraw, GEQUAL); where the road under it is a GPU object, the two are coplanar and the redraw
+  wins about half the pixels -- the holes; the game's table puts the shadow over the road by order, no depth. Next:
+  zp96 (C96, r91f's bytes, the same drive) -- new in C99-C101, or there since the shadow went to the GPU.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
