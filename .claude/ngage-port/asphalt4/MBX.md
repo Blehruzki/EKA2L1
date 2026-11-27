@@ -15607,6 +15607,14 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   census writes them); #error beside A4_SHADZFAR against the censuses most often combined. **C103 = C102 +
   -DA4_SHADZCEN**: 6f79622e3c867418..., 1,030,244 bytes; C102 still 8e46cee6. bat102 stopped again (its first run).
   Next: tn103 (C103 through the tunnel, C marks at 60, 120, 165, 170 s; py/szc.py), then bat103.
+- **tn103** (C103, tun.sh's drive with C at 60, 120, 165, 170 s; framestat 3,217, the boot fault only; the tunnel at
+  166-176 s by its walls; three marks written, one press lost): **the census reads** -- every 230 renders 97,520
+  faces (424 a render, as before); over the race far (1/8) 47,750, near a car 239,559, under a nearer list face
+  160,271, none 132,452 of 580,032. By render: 8651 (the embankment) far 0, near 40, **list 384**; mark2 (165 s,
+  the tunnel's mouth) far 22, near 57, list 55, none 290; 10034 far 3, near 56, list 241, none 124. **Where the
+  game's own road faces lie under the shadow, the faces are tested against them with the 1/64 nudge (1.5% against
+  the list's 128) -- a case C102 does not touch**; on the bench it shows no holes. On the phone a C press in the
+  tunnel, when the shadow breaks, names the case.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
