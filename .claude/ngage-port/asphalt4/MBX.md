@@ -15615,6 +15615,16 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   game's own road faces lie under the shadow, the faces are tested against them with the 1/64 nudge (1.5% against
   the list's 128) -- a case C102 does not touch**; on the bench it shows no holes. On the phone a C press in the
   tunnel, when the shadow breaks, names the case.
+- **bat103 on a4_r91i_cand.exe (C103, sha256 6f79622e3c867418..., 1,030,244 bytes): at103 (six maps 45 s) 5,531;
+  m103 (Instant Play 300 s, 7 marks) 2,231; pa103 (Paris 400 s) 3,367; rv103 (the Mini reversing) 2,056; the boot
+  fault only in each.** Against bat101 (C101): 5,544 / 2,325 / 3,400 / 2,065 -- level but for m103, 4% under
+  m101 and a little under the earlier range (2,259-2,446): the new work is a box test per shadow face only GPU
+  items cover and the census's counts, 424 faces a render; within the spread between runs. pa103's census (Paris
+  in the battery's drive, a car): near a car 614,410 of 667,527 faces, far 5,834, list 1,031, none 46,252.
+- **Sent: r91i** = a4_r91i_cand.exe (C103 = C102 + A4_SHADZCEN), unbaked, sha256
+  6f79622e3c86741884eab976a528f9d62f79d25a10489b473f39b219d9ef5985, 1,030,244 bytes. To look at: the Z1000 in Paris at
+  night -- the embankment (C102's fix), the tunnel (a C press when the shadow breaks: the census names its case);
+  the other vehicles' shadows and lower edges as r91h.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
