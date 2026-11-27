@@ -199,3 +199,9 @@ C101.flags = C100.flags with `-DA4_LAMPFIX` (round 89, the owner on r91g: the Z1
 sat inside the bike; a car whose six are 0 and whose mesh is the Z1000's (516 vertices, 810 faces, four vertices where
 its file has them) is given 359 359 388 436 388 436 (head lamp, tail lamp). Scratch as C100. sha256 fb7c27f7a7b7d531...,
 1,029,432 bytes. Bench only: `-DA4_LAMPSCAN` (CUT1's place 'LMP1': the player's car object scanned for its lamp words).
+
+C102.flags = C101.flags with `-DA4_SHADZFAR=3` (round 89, the owner on r91h: the Z1000's shadow "in pieces", four photos
+of five): a shadow face only GPU items cover (round 78's rule: drawn over everything with its own depth, those items
+drawn again over it) whose box meets none of its bucket's car candidates is nudged ZK >> 3 (1/8) nearer instead of
+1/64, so a GPU road standing above the shadow's plane no longer lands over it; a face a car may cover keeps 1/64.
+Scratch as C101. sha256 8e46cee60bad67ec..., 1,029,800 bytes. Bench only: `-DA4_SHADZSH=n` (the 1/64 nudge's shift).

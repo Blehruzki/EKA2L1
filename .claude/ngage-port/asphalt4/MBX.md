@@ -15581,6 +15581,12 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   with A4_SHADFASTCHECK, or at or below A4_SHADZSH. szf3.exe = C101 + -DA4_SHADZFAR=3: 8e46cee60bad67ec, 1,029,800
   bytes. **C90-C101 rebuild to their bytes** with the code in the tree (C101 fb7c27f7, C100 78c79060, C96 47a0f91a).
   Next (zfq.sh): zf3 (the Z1000, the same drive), c350_101 / c350_f3 (the 350Z, C101 and szf3).
+- **zfq** (the boot fault only in each): **zf3 (szf3, the Z1000; framestat 2,857): the shadow solid on the embankment**
+  (up91h/zf3_more.png, 122-146 s: one dark shape left of the bike, across the kerb, no road through it; the bike rode
+  the right-hand side this time). **c350_101 / c350_f3 (the 350Z on C101 / szf3; 2,226 / 2,191): the car's bumper,
+  sills and tyres and its shadow the same in both** (up91h/c350_cmp.png, 100-150 s) -- no darkened strip.
+- **C102 = C101 + -DA4_SHADZFAR=3** (flags/C102.flags; scratch 0x1C3000): = szf3.exe, 8e46cee60bad67ec..., 1,029,800
+  bytes. Next: the usual battery on it (bat102: six maps, Instant Play, Paris, the Mini reversing).
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
