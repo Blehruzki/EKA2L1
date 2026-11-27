@@ -15587,6 +15587,18 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   sills and tyres and its shadow the same in both** (up91h/c350_cmp.png, 100-150 s) -- no darkened strip.
 - **C102 = C101 + -DA4_SHADZFAR=3** (flags/C102.flags; scratch 0x1C3000): = szf3.exe, 8e46cee60bad67ec..., 1,029,800
   bytes. Next: the usual battery on it (bat102: six maps, Instant Play, Paris, the Mini reversing).
+- **The owner: "run a bench in the tunnel".** bat102 stopped in its first run (restarted after). tun.sh: the Z1000 in
+  career Paris, '5' held 200 s, a full-size shot a second -- tn102 (C102; framestat 3,182), tn101 (C101; 3,217), tnst
+  (stock; 2,064); the boot fault only in each. The yellow tunnel (found by its walls, shots 164-174 / 158-168 /
+  198-200): **in all three the shadow one solid silhouette** from the rear wheel out to the left (up91h/tun_cmp.png),
+  upright and leaning (tn101 166 s, tn102 172 s) -- **the bench does not reproduce the owner's tunnel photos** (two
+  loose patches well left of the bike, the part by the wheel missing); it does reproduce the embankment's holes, which
+  C102 removes. The phone's own captures (ph91h, CRK1): **the shadow batch whole on the phone** -- 97,520 faces batched
+  every 230 renders (424 a render, as on the bench: 97,520), buckets lost 0 in all eight. So the phone's faces reach
+  the GPU as the bench's do, and the difference is the MBX's depth contest against the road where the bench's llvmpipe
+  passes it: on the phone the part by the bike loses too. That part lies inside the bike's box, where C102 keeps the
+  1/64 nudge -- so C102 may leave the tunnel case on the phone as it is. Not known from the bench: what margin the
+  MBX needs, and which rule (round 78's, a nearer list face's, untested) those faces take on the phone.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
