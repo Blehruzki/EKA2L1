@@ -5305,7 +5305,10 @@ static inline PROF_NI void tri_conv(uint32_t kind, int wsh, int hsh, int32_t x0,
     else if (MESH_ON()) {
         /* a mesh frame: every class tests its true depth against the list's (draw_run); a
          * shadow 1/64 nearer, so the road it lies on does not hide it where both write */
-        int32_t zk = kind == KIND_SHAD ? ZK + (ZK >> 6) : ZK;
+#ifndef A4_SHADZSH
+#define A4_SHADZSH 6    /* round 89 (bench): the shadow's nudge, ZK >> this (6: 1/64, every build before) */
+#endif
+        int32_t zk = kind == KIND_SHAD ? ZK + (ZK >> A4_SHADZSH) : ZK;
         zq = shift >= 0 ? (zk << shift) : (zk >> -shift);
     }
 #endif
