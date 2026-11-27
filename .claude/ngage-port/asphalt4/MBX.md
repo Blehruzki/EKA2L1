@@ -15535,6 +15535,18 @@ Readers in the scratchpad: py/wds.py, py/cml.py, py/crkw.py, py/wcring.py.
   1,029,432 bytes. To look at on the phone: the Z1000 braking (the tail lamp red, no slab beside the wheel), its head
   lamp at night (vertex 359, not seen on the bench), the other 27 vehicles as r91g. Next on the bench: the hash's cost
   (only the riders move; a cheaper test that still sees every move).
+- **Phone round r91h (the owner):** five photos of the Z1000 at night in Paris, lap 2/3, 245-249 km/h (two in the
+  tunnel, three on the embankment towards the Eiffel Tower) -- "all photos except the last one show the shadow issue.
+  the last one shows it working fine" -- and eight captures (a4tel0-7, capidx 12-19, frames 11,737-17,127; the
+  owner's files copied to the scratchpad's ph91h/, decoded there). Read from the photos (up91h/rear5.png): **the
+  bike's ground shadow is not where the bike is** -- in the tunnel two dark patches on the floor well left of the
+  bike, apart from it (head- and body-sized); on the embankment a small patch left of the bike and a trapezoid behind
+  the rear wheel, then a large trapezoid left of the bike; in the last photo one patch joined to the rear wheel,
+  stretching up to the left -- a shadow cast by the bike. The captures: no shadow on the bike's own body; capture 0's
+  shadow is a patch on the road left of the bike, apart from it. No brake glow in any photo (accelerating). Pace in the
+  captures: 58-59 ms a render over 2,760-4,166 renders (3D 21.4, hook 13.4-13.8, composite 10.5, draw 6.0), 3% of
+  render gaps >= 90 ms. Next: the Z1000 in Paris on C101 and on stock, the same drive, a shot a second, to see whose
+  the shadow's placement is.
 
 ## Round 89: toward 30 fps (the owner: "So what's left to get 30 fps?" ... "go with that plan" -- the fused copy and convert, then texture sheets, then a profile of the game's own unnamed work; pipelining not taken)
 - **The fused copy and convert, dropped before coding (worked out from the two loops and the frame's order).** The
